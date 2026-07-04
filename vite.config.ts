@@ -342,6 +342,10 @@ export default defineConfig({
         admin: fileURLToPath(new URL('admin.html', import.meta.url)),
         play: fileURLToPath(new URL('play.html', import.meta.url)),
         guide: fileURLToPath(new URL('guide.html', import.meta.url)),
+        // Vertical slice "O Rio" (isolated prototyping entry, E1). Listed here so
+        // the multi-page build emits river.html; the dev server serves it at /river.html
+        // without config. Does not touch the original game entries above.
+        river: fileURLToPath(new URL('river.html', import.meta.url)),
       },
     },
   },

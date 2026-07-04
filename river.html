@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#050509" />
+<meta name="robots" content="noindex, nofollow" />
+<title>O Rio (vertical slice em preparacao)</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(120% 120% at 50% 20%, #0b1420 0%, #050509 70%);
+    color: #e8e6df;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #river-root {
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .card { max-width: 34rem; }
+  .kicker { font-size: 0.72rem; letter-spacing: 0.28em; text-transform: uppercase; opacity: 0.5; margin: 0 0 1rem; }
+  .title { font-size: 2.75rem; letter-spacing: 0.03em; margin: 0 0 0.5rem; font-weight: 600; }
+  .subtitle { font-size: 1.05rem; opacity: 0.75; margin: 0 0 1.75rem; }
+  .note { font-size: 0.88rem; opacity: 0.5; line-height: 1.6; margin: 0 auto; max-width: 30rem; }
+  .status { margin-top: 1.75rem; font-size: 0.78rem; opacity: 0.55; }
+</style>
+</head>
+<body>
+<div id="river-root">
+  <div class="card">
+    <p class="kicker">Jogo Xamanico</p>
+    <h1 class="title">O Rio</h1>
+    <p class="subtitle">Vertical slice em preparacao.</p>
+    <p class="note">
+      Entrada isolada de prototipagem (etapa E1). O cenario, o rio e o sistema
+      relacional ainda nao foram implementados. Nenhuma simulacao, renderizador
+      ou HUD e iniciado nesta pagina. O bootstrap offline entra nas proximas
+      etapas.
+    </p>
+    <p class="status" id="river-status">Inicializando entrada isolada...</p>
+  </div>
+</div>
+<script type="module" src="/src/river_main.ts"></script>
+</body>
+</html>
