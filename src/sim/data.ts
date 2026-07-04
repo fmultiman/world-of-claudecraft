@@ -11,6 +11,7 @@ import type {
   DelveModuleDef,
   DungeonDef,
   GroundObjectDef,
+  InitialWorldContent,
   ItemDef,
   MobTemplate,
   NpcDef,
@@ -411,6 +412,20 @@ export const DELVES: Record<string, DelveDef> = {
 export const DELVE_LIST: DelveDef[] = Object.values(DELVES).sort((a, b) => a.index - b.index);
 export const DELVE_MODULES: Record<string, DelveModuleDef> = {
   ...COLLAPSED_RELIQUARY_MODULES,
+};
+
+// The shipped world's initial population as one injectable bundle (SimConfig.world).
+// References the canonical constants above (no copies), so a Sim constructed without
+// an explicit world spawns the byte-identical world it always has. Scope contract:
+// see InitialWorldContent in types.ts (population only; template/registry tables and
+// the terrain stay module globals).
+export const DEFAULT_WORLD_CONTENT: InitialWorldContent = {
+  npcs: NPCS,
+  camps: CAMPS,
+  groundObjects: GROUND_OBJECTS,
+  dungeons: DUNGEON_LIST,
+  delves: DELVE_LIST,
+  playerStart: PLAYER_START,
 };
 
 function delveModuleFootprint(moduleId: string): number {

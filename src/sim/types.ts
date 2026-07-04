@@ -1769,6 +1769,22 @@ export interface MoveInput {
   jump: boolean;
 }
 
+// The initial world population the Sim constructor spawns: NPC placements, mob
+// camps, ground-object placements, dungeon doors + their instance slots, delve run
+// slots, and the fresh-character start position. Injectable via SimConfig.world;
+// unset means DEFAULT_WORLD_CONTENT (src/sim/data.ts), the shipped world.
+// Definition data only: the Sim never mutates these. Runtime template/registry
+// tables (MOBS, ITEMS, QUESTS, ABILITIES, the DUNGEONS/DELVES records, ZONES and
+// the terrain) deliberately stay module globals and are NOT injectable here.
+export interface InitialWorldContent {
+  npcs: Readonly<Record<string, NpcDef>>;
+  camps: readonly CampDef[];
+  groundObjects: readonly GroundObjectDef[];
+  dungeons: readonly DungeonDef[];
+  delves: readonly DelveDef[];
+  playerStart: Readonly<{ x: number; z: number }>;
+}
+
 export interface SimConfig {
   seed: number;
   playerClass: PlayerClass;
@@ -1782,6 +1798,9 @@ export interface SimConfig {
   // authoritative server uses its realm-local 3 AM daily reset; offline/headless omit
   // this and fall back to a flat 24h day. Keeps the time zone out of the sim core.
   raidResetMs?: (nowMs: number) => number;
+  // Initial world population override. Unset = DEFAULT_WORLD_CONTENT (the shipped
+  // world); see InitialWorldContent for exactly what is and is not injectable.
+  world?: InitialWorldContent;
 }
 
 export function emptyMoveInput(): MoveInput {
