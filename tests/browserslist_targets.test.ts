@@ -26,6 +26,16 @@ describe('browserslist floor parser', () => {
     expect(parseBrowserslistFloors(text)).toEqual(['chrome 120', 'safari 17.2']);
   });
 
+  it('tolerates CRLF line endings identically to LF (Windows autocrlf checkout)', () => {
+    // The shipped .browserslistrc is checked out with CRLF under git core.autocrlf.
+    // A trailing '\r' must not defeat the '#'-comment strip and turn a comment line
+    // into a bogus floor entry: CRLF must parse exactly like LF.
+    const lf = '# CSS engine floor\nChrome >= 120\n\nFirefox >= 121\n';
+    const crlf = lf.replace(/\n/g, '\r\n');
+    expect(parseBrowserslistFloors(crlf)).toEqual(['chrome 120', 'firefox 121']);
+    expect(parseBrowserslistFloors(crlf)).toEqual(parseBrowserslistFloors(lf));
+  });
+
   it('strips a # comment BEFORE splitting on comma (a comment may contain a comma)', () => {
     // Load-bearing ordering: if comma-split ran first, the text after the comma in the
     // comment would lose its '#' and parse as a bogus floor. This is the exact bug the

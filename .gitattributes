@@ -5,3 +5,7 @@
 # them from language statistics. Display hygiene only - not removal, not gitignore.
 src/ui/i18n.resolved.generated/** linguist-generated
 src/admin/i18n.resolved.generated/** linguist-generated
+
+# Keep the CSS engine floor file LF so a Windows autocrlf checkout does not hand
+# CRLF to the .browserslistrc parser (defense in depth; the parser tolerates CRLF too).
+.browserslistrc text eol=lf
