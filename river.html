@@ -23,11 +23,33 @@
   #river-boot .kicker { font-size: 0.72rem; letter-spacing: 0.28em; text-transform: uppercase; opacity: 0.5; margin: 0 0 1rem; }
   #river-boot .title { font-size: 2.75rem; letter-spacing: 0.03em; margin: 0 0 1.25rem; font-weight: 600; }
   #river-boot .status { font-size: 0.85rem; opacity: 0.6; margin: 0; }
+  /* The slice's one-line message surface: quiet, bottom-center, fades in and
+     out via .show. Not a system toast; reused by later steps. */
+  #river-message {
+    position: fixed; left: 50%; bottom: 14vh; transform: translateX(-50%);
+    z-index: 5; max-width: min(80vw, 34rem); text-align: center;
+    color: #dceeec; font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.35rem; font-style: italic; letter-spacing: 0.02em;
+    text-shadow: 0 1px 8px rgba(5, 10, 14, 0.85);
+    opacity: 0; transition: opacity 1.4s ease-in-out; pointer-events: none;
+  }
+  #river-message.show { opacity: 1; }
+  /* One ambient breath of the water's presence: a soft cool tint that eases in
+     and back out. Never blocks input; nothing that reads as damage. */
+  #river-veil {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none;
+    background: radial-gradient(130% 100% at 50% 62%,
+      rgba(70, 140, 150, 0.34) 0%, rgba(40, 90, 110, 0.20) 45%, rgba(10, 30, 40, 0.05) 80%);
+    opacity: 0; transition: opacity 2.2s ease-in-out;
+  }
+  #river-veil.show { opacity: 1; }
 </style>
 </head>
 <body>
 <canvas id="game-canvas"></canvas>
 <div id="nameplates"></div>
+<div id="river-veil"></div>
+<div id="river-message" aria-live="polite"></div>
 <div id="river-boot">
   <div>
     <p class="kicker">Jogo Xamanico</p>

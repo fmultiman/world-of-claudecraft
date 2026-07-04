@@ -20,6 +20,11 @@ import { Keybinds } from './game/keybinds';
 import { assetsReady } from './render/assets/preload';
 import { Renderer } from './render/renderer';
 import { RIVER_INITIAL_WORLD_CONTENT, RIVER_WORLD_SEED } from './sim/content/river/initial_world';
+import {
+  createRiverSpiritState,
+  RIVER_MANIFESTATION_LINE,
+  updateRiverSpirit,
+} from './sim/encounters/river_spirit';
 import { Sim } from './sim/sim';
 import { DT } from './sim/types';
 
@@ -35,6 +40,37 @@ function setStatus(text: string): void {
 function hideBootOverlay(): void {
   const overlay = document.getElementById('river-boot');
   if (overlay) overlay.style.display = 'none';
+}
+
+// The slice's one-line message surface (#river-message in river.html): fade in,
+// hold, fade out. Deliberately tiny and slice-owned; NOT the MMO HUD, not a
+// toast system. Reused by later steps for every line the territory speaks.
+let messageHideTimer: number | null = null;
+function showRiverMessage(text: string, holdMs = 5200): void {
+  const el = document.getElementById('river-message');
+  if (!el) return;
+  if (messageHideTimer !== null) window.clearTimeout(messageHideTimer);
+  el.textContent = text;
+  el.classList.add('show');
+  messageHideTimer = window.setTimeout(() => {
+    el.classList.remove('show');
+    messageHideTimer = null;
+  }, holdMs);
+}
+
+// One ambient "breath" of the water's presence (#river-veil): a soft screen
+// tint that eases in and back out via CSS transitions. Pointer-events: none,
+// so it never blocks play; cool water tones, nothing that reads as damage.
+let veilHideTimer: number | null = null;
+function breatheRiverVeil(inMs = 2300): void {
+  const el = document.getElementById('river-veil');
+  if (!el) return;
+  if (veilHideTimer !== null) window.clearTimeout(veilHideTimer);
+  el.classList.add('show');
+  veilHideTimer = window.setTimeout(() => {
+    el.classList.remove('show');
+    veilHideTimer = null;
+  }, inMs);
 }
 
 async function boot(): Promise<void> {
@@ -62,6 +98,10 @@ async function boot(): Promise<void> {
   const facing = Math.atan2(LAKE_CENTER.x - sim.player.pos.x, LAKE_CENTER.z - sim.player.pos.z);
   sim.player.facing = facing;
   sim.player.prevFacing = facing;
+
+  // The river presence (E4): host-driven scenario state, one per Sim session.
+  // updateRiverSpirit runs before each tick below; nothing inside Sim knows it.
+  const riverSpirit = createRiverSpiritState();
 
   const keybinds = new Keybinds('river:neofito');
   let renderer: Renderer;
@@ -108,13 +148,22 @@ async function boot(): Promise<void> {
 
     const mouselook = input.isMouselookActive() && !sim.player.dead;
     acc += frameDt;
+    let manifestedThisFrame = false;
     while (acc >= DT) {
       Object.assign(sim.moveInput, input.readMoveInput());
       // Under mouselook the camera owns the heading (classic right-mouse turn);
       // otherwise the sim turns the character via moveInput.turnLeft/Right.
       if (mouselook) sim.player.facing = input.camYaw;
+      // The presence checks proximity before the tick, so its log event drains
+      // in this tick's return (the stream record later steps will consume; the
+      // returned edge drives this frame's presentation directly).
+      if (updateRiverSpirit(riverSpirit, sim)) manifestedThisFrame = true;
       sim.tick();
       acc -= DT;
+    }
+    if (manifestedThisFrame) {
+      showRiverMessage(RIVER_MANIFESTATION_LINE);
+      breatheRiverVeil();
     }
 
     const pp = sim.player;
