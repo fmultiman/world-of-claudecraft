@@ -22,11 +22,13 @@ import { Renderer } from './render/renderer';
 import { RIVER_INITIAL_WORLD_CONTENT, RIVER_WORLD_SEED } from './sim/content/river/initial_world';
 import {
   createRiverSpiritState,
+  isRiverCurrentActive,
   RIVER_MANIFESTATION_LINE,
+  RIVER_RESISTANCE_LINE,
   updateRiverSpirit,
 } from './sim/encounters/river_spirit';
 import { Sim } from './sim/sim';
-import { DT } from './sim/types';
+import { DT, emptyMoveInput } from './sim/types';
 
 // Mirror Lake's center (src/sim/content/zone1.ts LAKE): the spawn faces the
 // water so the first thing the player sees is the reason the slice exists.
@@ -148,22 +150,33 @@ async function boot(): Promise<void> {
 
     const mouselook = input.isMouselookActive() && !sim.player.dead;
     acc += frameDt;
-    let manifestedThisFrame = false;
     while (acc >= DT) {
-      Object.assign(sim.moveInput, input.readMoveInput());
-      // Under mouselook the camera owns the heading (classic right-mouse turn);
-      // otherwise the sim turns the character via moveInput.turnLeft/Right.
-      if (mouselook) sim.player.facing = input.camYaw;
-      // The presence checks proximity before the tick, so its log event drains
-      // in this tick's return (the stream record later steps will consume; the
-      // returned edge drives this frame's presentation directly).
-      if (updateRiverSpirit(riverSpirit, sim)) manifestedThisFrame = true;
+      // The presence runs BEFORE the tick: it may start/advance the current and
+      // move the body directly. Its returned effect drives presentation and
+      // tells us when the water, not the player, owns the body this tick.
+      const effect = updateRiverSpirit(riverSpirit, sim);
+      const riverOwnsBody = isRiverCurrentActive(riverSpirit) || effect === 'released';
+      if (riverOwnsBody) {
+        // Input blocked: the current owns displacement, so the tick must not
+        // apply player intent (and facing is left to the camera). Local to the
+        // slice; the shared Input/controls are untouched.
+        Object.assign(sim.moveInput, emptyMoveInput());
+      } else {
+        Object.assign(sim.moveInput, input.readMoveInput());
+        // Under mouselook the camera owns the heading (classic right-mouse
+        // turn); otherwise the sim turns the character via turnLeft/Right.
+        if (mouselook) sim.player.facing = input.camYaw;
+      }
       sim.tick();
+      if (effect === 'manifested') {
+        showRiverMessage(RIVER_MANIFESTATION_LINE);
+        breatheRiverVeil();
+      } else if (effect === 'resistStarted') {
+        showRiverMessage(RIVER_RESISTANCE_LINE);
+        // A stronger, longer breath for the water taking the body.
+        breatheRiverVeil(2900);
+      }
       acc -= DT;
-    }
-    if (manifestedThisFrame) {
-      showRiverMessage(RIVER_MANIFESTATION_LINE);
-      breatheRiverVeil();
     }
 
     const pp = sim.player;
