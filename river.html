@@ -7,44 +7,32 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>O Rio (vertical slice em preparacao)</title>
 <style>
+  /* Minimal page shell; the game CSS layers arrive via src/river_main.ts
+     (import './styles/index.css', the same single import src/main.ts uses). */
   :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; }
-  body {
+  html, body { margin: 0; height: 100%; background: #050509; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #nameplates { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+  #river-boot {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center; text-align: center;
     background: radial-gradient(120% 120% at 50% 20%, #0b1420 0%, #050509 70%);
     color: #e8e6df;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
   }
-  #river-root {
-    min-height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 24px;
-    box-sizing: border-box;
-  }
-  .card { max-width: 34rem; }
-  .kicker { font-size: 0.72rem; letter-spacing: 0.28em; text-transform: uppercase; opacity: 0.5; margin: 0 0 1rem; }
-  .title { font-size: 2.75rem; letter-spacing: 0.03em; margin: 0 0 0.5rem; font-weight: 600; }
-  .subtitle { font-size: 1.05rem; opacity: 0.75; margin: 0 0 1.75rem; }
-  .note { font-size: 0.88rem; opacity: 0.5; line-height: 1.6; margin: 0 auto; max-width: 30rem; }
-  .status { margin-top: 1.75rem; font-size: 0.78rem; opacity: 0.55; }
+  #river-boot .kicker { font-size: 0.72rem; letter-spacing: 0.28em; text-transform: uppercase; opacity: 0.5; margin: 0 0 1rem; }
+  #river-boot .title { font-size: 2.75rem; letter-spacing: 0.03em; margin: 0 0 1.25rem; font-weight: 600; }
+  #river-boot .status { font-size: 0.85rem; opacity: 0.6; margin: 0; }
 </style>
 </head>
 <body>
-<div id="river-root">
-  <div class="card">
+<canvas id="game-canvas"></canvas>
+<div id="nameplates"></div>
+<div id="river-boot">
+  <div>
     <p class="kicker">Jogo Xamanico</p>
     <h1 class="title">O Rio</h1>
-    <p class="subtitle">Vertical slice em preparacao.</p>
-    <p class="note">
-      Entrada isolada de prototipagem (etapa E1). O cenario, o rio e o sistema
-      relacional ainda nao foram implementados. Nenhuma simulacao, renderizador
-      ou HUD e iniciado nesta pagina. O bootstrap offline entra nas proximas
-      etapas.
-    </p>
-    <p class="status" id="river-status">Inicializando entrada isolada...</p>
+    <p class="status" id="river-status">Preparando a travessia...</p>
   </div>
 </div>
 <script type="module" src="/src/river_main.ts"></script>
