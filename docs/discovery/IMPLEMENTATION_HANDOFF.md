@@ -1,211 +1,200 @@
-# Implementation Handoff — "O Rio" vertical slice (through E5)
+# Implementation Handoff — "O Rio" vertical slice (through E7)
 
-Operational handoff so a new agent can continue at E6 without re-reading the
-session. Background lives in `SHAMANIC_REPOSITORY_AUDIT.md` and
+Operational handoff so a new agent can continue without re-reading the session.
+Background lives in `SHAMANIC_REPOSITORY_AUDIT.md` and
 `RIVER_VERTICAL_SLICE_DESIGN.md` (this file does not repeat them).
 
 ## 1. Slice in 5 lines
 A Neofito (technical placeholder class: `warrior`) spawns alone on the Eastbrook
-Vale shore of Mirror Lake, offline, no login/server/DB. Walking to the shore, a
-territorial presence (the river) notices him. Forcing the deep water without a
-relationship makes the current seize the body and sweep it back to the bank. The
-slice tests whether reciprocity and territorial agency produce play, not text.
-No combat, no quest, no permanent power.
+Vale shore of Mirror Lake, offline, no login/server/DB. A territorial presence
+(the river) notices him; there are three spatial ways across: read the shallow
+ford, offer at the shore stone, or force the deep channel (which seizes the body
+and sweeps it back). The river keeps a five-state memory of the relationship. The
+slice tests whether reciprocity and territorial agency produce play, not text. No
+combat, no quest, no permanent power.
 
 ## 2. Branch and working tree
 - Branch: `discovery/shamanic-game`.
-- Working tree: clean (E5 committed). `origin`/`upstream` set; no push done.
+- Working tree: clean (E7 committed). `origin`/`upstream` set; no push done.
 - Note: `git core.autocrlf=true` on this Windows checkout; commits store LF (the
   "LF will be replaced by CRLF" warnings are expected and harmless).
 
-## 3. Commit chain E1–E5 (short hash + what)
-- `ce5ffb41` feat(shamanic): add isolated river slice entry (E1: `river.html` +
-  `src/river_main.ts` + `vite.config.ts` entry).
+## 3. Commit chain (short hash + what)
+- `ce5ffb41` feat(shamanic): add isolated river slice entry (E1).
 - `b697703a` refactor(sim): allow injected initial world content (E2:
   `InitialWorldContent` seam + `DEFAULT_WORLD_CONTENT`).
-- `963a08eb` feat(shamanic): bootstrap minimal offline river world (E3: content
-  pack + real offline bootstrap; player-only vale).
-- `3da9533e` feat(shamanic): add first river manifestation (E4: anchor +
-  one-time manifestation + slice message/veil).
-- `08308b53` feat(shamanic): add river resistance and current (E5: relation
-  states + deep-water resistance + current + input block).
-- (Also, not slice code: `da42ae68` fix(build) CRLF browserslist; `b8d3cb16`
-  docs discovery audit + design.)
+- `963a08eb` feat(shamanic): bootstrap minimal offline river world (E3).
+- `3da9533e` feat(shamanic): add first river manifestation (E4).
+- `08308b53` feat(shamanic): add river resistance and current (E5).
+- `b34dca69` feat(shamanic): add three river relationship paths (E6).
+- `611cf8d9` feat(shamanic): prepare river slice for playtesting (E7).
+- Non-slice: `da42ae68` fix(build) CRLF browserslist; `b8d3cb16` docs audit +
+  design; `76c07ba3` docs handoff through E5 (this file, now updated for E7).
 
 ## 4. Current architecture
 - **`river.html`** (repo root, isolated Vite entry, `noindex`): `#game-canvas`,
-  `#nameplates`, `#river-veil` (CSS screen tint), `#river-message` (one-line
-  surface), `#river-boot` (loading overlay), + inline CSS for veil/message.
-  Loads only `<script type="module" src="/src/river_main.ts">`.
+  `#nameplates`, `#river-veil` (CSS screen tint), `#river-message` (narrative
+  line), `#river-hint` (E7 contextual interaction cue), `#river-boot` (loading
+  overlay), + inline CSS. Loads only `/src/river_main.ts`.
 - **`src/river_main.ts`**: the slice bootstrap. Does NOT reuse `src/main.ts`
   `startGame` (that is ~1700 lines coupled to landing DOM + full HUD, with
-  module-scope landing side effects). It composes public seams directly: `new
-  Sim({ seed, playerClass:'warrior', playerName:'Neofito', world:
-  RIVER_INITIAL_WORLD_CONTENT })`, `Renderer(sim, canvas, nameplates)`,
-  `Input`/`Keybinds`, `camera_follow` helpers, `assetsReady`. Fixed-step offline
-  loop (`DT`, 20 Hz, accumulator). No HUD mounted. Exposes `window.__river =
-  { sim, renderer, input }` for E2E. Owns `showRiverMessage()`/`breatheRiverVeil()`
-  (CSS class toggles on the two elements).
+  module-scope side effects). Composes public seams directly: `new Sim({ seed,
+  playerClass:'warrior', playerName:'Neofito', world: RIVER_INITIAL_WORLD_CONTENT
+  })`, `Renderer(sim, canvas, nameplates)`, `Input`/`Keybinds`, `camera_follow`,
+  `assetsReady`. Fixed-step offline loop (`DT`, 20 Hz, accumulator). No HUD.
+  Exposes `window.__river = { sim, renderer, input, spirit }` for E2E. Owns
+  `showRiverMessage()`/`breatheRiverVeil()` and the E7 cue meshes (added to
+  `renderer.scene`) + hint/conclusion wiring. Wires `onUiKey('interact')` ->
+  `attemptOffer` (default interact key = `F`).
 - **`InitialWorldContent`** (`src/sim/types.ts`, E2 seam): optional
-  `SimConfig.world`; fields `npcs, camps, groundObjects, dungeons, delves,
-  playerStart`. Unset -> `DEFAULT_WORLD_CONTENT` (`src/sim/data.ts`, aliases the
-  shipped tables). The Sim constructor's population loops + `addPlayer`
-  fresh-start read `this.cfg.world`. Terrain, ZONES, MOBS/ITEMS/QUESTS and the
-  DUNGEONS/DELVES registries are NOT injectable (stay module globals).
+  `SimConfig.world` (`npcs, camps, groundObjects, dungeons, delves, playerStart`).
+  Unset -> `DEFAULT_WORLD_CONTENT` (`src/sim/data.ts`). Terrain, ZONES,
+  MOBS/ITEMS/QUESTS and the DUNGEONS/DELVES registries are NOT injectable (stay
+  module globals; the renderer still draws the shipped vale terrain + props).
 - **`RIVER_INITIAL_WORLD_CONTENT`** (`src/sim/content/river/initial_world.ts`):
-  frozen, MMO-empty (all arrays/records empty), `playerStart = RIVER_PLAYER_START
-  (-45, 60)`. Also exports `RIVER_WORLD_SEED = 20061`. Never merged into
-  `data.ts`; only the river entry + its tests import it.
+  frozen, MMO-empty, `playerStart = RIVER_PLAYER_START (-45, 60)`; exports
+  `RIVER_WORLD_SEED = 20061`. Never merged into `data.ts`.
 - **`src/sim/encounters/river_spirit.ts`**: the presence, sim-pure (no DOM, no
-  `Math.random`, no wall clock, no rng). Holds `RiverSpiritState`; exports
-  `createRiverSpiritState`, `updateRiverSpirit(state, host): RiverSpiritEffect`,
-  `isRiverCurrentActive(state)`, plus anchor/return/line/color/tick constants.
+  `Math.random`, no wall clock, no rng). The source of truth for relation,
+  `hasToken`, crossings, current. Exports `createRiverSpiritState`,
+  `updateRiverSpirit(state, host): RiverSpiritEffect`, `attemptOffer(state,
+  host): RiverOfferOutcome`, `isRiverCurrentActive`, plus all coords/lines/colors.
+- **`src/river_hints.ts`** (E7, presentation-only, DOM-free, tested): the initial
+  and conclusion lines, `RIVER_OFFER_HINT_TEXT`, and pure predicates
+  `offerHintVisible(hasToken,px,pz)`, `tokenStonesVisible(hasToken)`,
+  `isCrossingEffect(effect)`. Reads the module's truth; never holds geometry.
 - **Host-driven flow**: the bootstrap calls `updateRiverSpirit(state, sim)` once
-  BEFORE each `sim.tick()`. Nothing in `Sim`/`SimContext`/tick-phase order
-  references the module, so the shipped game and the parity gate never see it.
-  The module reads/writes the player only through the public Sim surface
-  (`player` entity `pos/prevPos/vx/vz/vy`, `groundPos`, `rebucket`, `emit`,
-  `tickCount`, `playerId`) via a structural `RiverSpiritHost` interface (a full
-  `Sim` satisfies it). It returns an effect the bootstrap uses to present
-  message/veil and to gate input.
+  BEFORE each `sim.tick()`; `attemptOffer` is edge-triggered by the interact key.
+  Nothing in `Sim`/`SimContext`/tick order references the module (parity gate
+  never sees it). The module touches the player only through the public Sim
+  surface (`player` entity `pos/prevPos/vx/vz/vy`, `groundPos`, `rebucket`,
+  `emit`, `tickCount`, `playerId`) via a structural `RiverSpiritHost` (a full
+  `Sim` satisfies it).
 
-## 5. Relation states (implemented)
-`RiverRelation = 'unknown' | 'observed' | 'offended'`.
-- `unknown`: start. No resistance possible.
-- `observed`: set by the E4 manifestation (first entry into the anchor radius).
-- `offended`: set by a forced deep-water entry after being observed.
-Not yet present: `authorized`, `reconciled` (E6).
+## 5. Final relation machine (five states)
+`RiverRelation = 'unknown' | 'observed' | 'authorized' | 'offended' | 'reconciled'`.
+- `unknown -> observed`: the manifestation, on first entry to the anchor radius.
+- `observed -> authorized`: an accepted offer (token at the stone).
+- `observed -> offended`: forcing the deep channel (current fires).
+- `offended -> reconciled`: humbly crossing the ford after offending.
+Deep-channel current fires only when relation is `observed` or `offended`;
+`authorized` and `reconciled` permit the deep channel (`deepChannelPermitted`).
+`reconciled` keeps the memory and never becomes `authorized`.
 
-## 6. Behavior implemented
-- **Manifestation**: once per session, when the player first enters the anchor
-  radius; `unknown -> observed`; emits `{type:'log'}` SimEvent; effect
-  `'manifested'`.
-- **Message**: `showRiverMessage(text)` on `#river-message` (fade in ~1.4s, hold
-  ~5.2s, fade out). Two lines so far (see 7).
-- **Veil**: `breatheRiverVeil(holdMs)` on `#river-veil` (cool tint eases in/out;
-  resistance uses a longer 2900ms breath). Pure CSS, `pointer-events:none`.
-- **Deep-water detection**: `groundHeight(x,z) < WATER_LEVEL - PLAYER_SWIM_DEPTH`
-  (the sim's own `deepWater`/`isSwimming` predicate), via `host.groundPos(x,z).y`.
-  Trigger = perceived (`relation !== 'unknown'`) AND deep water AND current
-  inactive. Not distance-based.
-- **Current**: tick-driven, `RIVER_CURRENT_TICKS` (50 ticks = 2.5s), eased
-  (`smoothstep`) straight line from entry point to `RIVER_RETURN_POS`; effects
-  `'resistStarted'` then `'carrying'` then `'released'`. No HP change, no death.
-- **Input block**: bootstrap-only. While `isRiverCurrentActive(state)` (or effect
-  `'released'`), the loop assigns `emptyMoveInput()` to `sim.moveInput` and does
-  not apply facing; camera still follows. Global `Input`/controls untouched.
-- **Return to bank**: on the final tick, `pos = groundPos(RETURN)`, `prevPos =
-  {...pos}`, velocity zeroed, `rebucket(player)` (the `releasePlayerSpirit`
-  primitive). Body emerges from water to dry ground.
+## 6. The three paths
+- **Observe**: walk the south shore to the shallow ford and wade it (never deep,
+  so the current never fires). Relation stays `observed`. Reaching the far bank
+  emits `'crossedFord'`.
+- **Offer**: walk over the river stones to gather the token (`hasToken`), carry
+  it to the shore stone, press interact -> `attemptOffer`. In `observed` ->
+  `authorized` (token consumed), and the deep channel no longer seizes the body;
+  in `offended` the same offer is refused (token kept); away from the stone
+  `'tooFar'`, without the token `'empty'`. Reaching the far bank while authorized
+  emits `'crossedOpen'`.
+- **Force**: E5 intact. Deep water while `observed`/`offended` -> `offended` +
+  current -> swept to `RIVER_RETURN_POS` -> control returned. No damage/death.
+- **Reconcile**: after offending, crossing the ford emits `'reconciled'`
+  (`offended -> reconciled`); the deep channel then permits passage but the water
+  "does not forget". No XP/gold/item/ability is ever granted (verified by test).
 
-## 7. Important constants and coordinates (all in `river_spirit.ts` unless noted)
-- `RIVER_WORLD_SEED = 20061` (shared with the shipped world; terrain is the vale
-  heightfield placeholder). In `initial_world.ts`.
-- `RIVER_PLAYER_START = (-45, 60)` (spawn; `initial_world.ts`). Dry, ~6.9yd above
-  water, faces Mirror Lake.
-- `RIVER_SPIRIT_ANCHOR = (-67, 73)`, `RIVER_SPIRIT_RADIUS = 12`. Dry shore,
-  25.6yd from spawn. Deep water begins ~9yd further toward the lake, so the
-  radius is always crossed before deep water (manifestation before resistance).
-- `RIVER_RETURN_POS = (-58, 68)`. Dry (h=2.14, ~6.6yd above water), slope 0.53,
-  10.3yd from the anchor, not deep (no re-trigger without walking back in).
-- `RIVER_CURRENT_TICKS = 50` (2.5s).
-- `RIVER_MANIFESTATION_LINE = "A água percebe sua pressa."` (color `#9fd8d4`).
-- `RIVER_RESISTANCE_LINE = "A água não abre caminho."` (color `#7fc6d6`).
-- Mirror Lake center `(-92, 88)` (from `src/sim/content/zone1.ts` `LAKE`, radius
-  30). `WATER_LEVEL = -4.5` (`src/sim/world.ts`), `PLAYER_SWIM_DEPTH = 0.8`
-  (`src/sim/pathfind.ts`) -> deep-water ground threshold `-5.3`.
+## 7. Positions, coordinates, lines (in `river_spirit.ts` unless noted)
+- `RIVER_WORLD_SEED = 20061`; `RIVER_PLAYER_START = (-45, 60)` (in
+  `initial_world.ts`). Terrain is the vale heightfield placeholder.
+- `RIVER_SPIRIT_ANCHOR = (-67, 73)` = the offering stone; `RIVER_SPIRIT_RADIUS =
+  12`; `RIVER_OFFERING_STONE = (-67, 73)`, `RIVER_OFFERING_RADIUS = 5`.
+- `RIVER_TOKEN_SPOT = (-52, 66)`, `RIVER_TOKEN_RADIUS = 4` (loose river stones).
+- `RIVER_FORD_CENTER = (-99, 62)`: validated shallow neck (z=62, x ~ -96..-102,
+  no deep cell) — the only wadeable crossing. `RIVER_FAR_SHORE_X = -106`: dry
+  ground at/ beyond this x = crossed.
+- `RIVER_RETURN_POS = (-58, 68)` (current deposits here); `RIVER_CURRENT_TICKS =
+  50` (2.5s).
+- Deep-water predicate: `groundHeight(x,z) < WATER_LEVEL - PLAYER_SWIM_DEPTH`
+  (`-4.5 - 0.8 = -5.3`). Mirror Lake center `(-92, 88)`, radius 30.
+- Lines (all Portuguese, slice-owned): manifestation "A água percebe sua pressa.";
+  resistance "A água não abre caminho."; token "Você recolhe pedras do leito.";
+  offer accepted "A água abre caminho."; refused "A água devolve o que você
+  oferece."; empty "Suas mãos estão vazias."; ford "Onde a água é rasa, ela deixa
+  passar."; opened "A água se abre para você."; reconciled "A água cede, mas não
+  esquece."; initial "Encontre um caminho para a outra margem." (`river_hints.ts`);
+  conclusion "A outra margem o recebe." (`river_hints.ts`).
 
-## 8. Files directly relevant to E6
-- `src/sim/encounters/river_spirit.ts` — grow the state machine + paths here.
-- `src/river_main.ts` — presentation + input gate + any new interaction wiring.
-- `src/sim/content/river/initial_world.ts` — if the offering needs a ground
-  object OR the ford needs a marker (weigh against loot/quest side effects; an
-  injected `groundObject` becomes a lootable sparkle, so prefer territorial state
-  in the module unless a real entity is needed).
-- `tests/river_spirit.test.ts` — extend (host-driven `step()` idiom already set
-  up: update -> gate input -> tick).
-- Read-only references for mechanics: `src/sim/world.ts` (`terrainHeight`,
-  `WATER_LEVEL`, `zoneBiomeAt`), `src/sim/pathfind.ts` (`PLAYER_SWIM_DEPTH`,
-  `PLAYER_MAX_CLIMB_SLOPE`), `src/sim/entity_roster.ts` (`releasePlayerSpirit`
-  reposition pattern), `src/sim/types.ts` (`SimEvent` union: `{type:'log'}` is
-  the presentation channel).
+## 8. Interaction key and behavior
+- Interact = default keybind `F` (`KeyF`, `src/game/keybinds.ts`), wired in the
+  slice's `InputCallbacks.onUiKey`; sets `pendingInteract`, consumed once per
+  frame by `attemptOffer`. The `#river-hint` ("Interagir (F)") shows only while
+  `hasToken` AND within `RIVER_OFFERING_RADIUS` of the stone; hides on leaving or
+  after the offer (token consumed). Global `Input`/controls untouched.
 
-## 9. Invariants and prohibitions
-- No auxiliary agents / subagents / parallel delegation (single-agent steps).
-- No general repository audit; read only what the step needs.
-- Do NOT change `IWorld`, the server, the wire protocol, or the `Sim` core
-  without a proven need. The presence stays a host-driven module; presentation
-  reacts to `SimEvent`s client-side (do not add IWorld fields to show river
-  state).
-- No CraftPix assets (skill icons are licensed to another account). Procedural /
-  CC0 GLB only.
-- One step per commit; restore build-regenerated artifacts before committing
-  (i18n `resolved.generated`, `guide/content.generated.ts`,
-  `render/assets/manifest.generated.ts`, `i18n.status.summary.json`).
-- Keep the module sim-pure: no DOM, no `Math.random`, no `Date.now`/
-  `performance.now`, no rng draws (determinism).
+## 9. E7 visual cues + UI (presentation, in the slice only)
+- **Procedural stones in `renderer.scene`** (never a Sim entity, never loot): a
+  grey cluster at `RIVER_TOKEN_SPOT` (hidden once `hasToken`, via
+  `cues.tokenStones.visible = tokenStonesVisible(...)`), and pale stones poking
+  above the shallow `RIVER_FORD_CENTER` neck so the crossing reads to the eye.
+  Deterministic layout (fixed offsets, no rng).
+- **`#river-hint`** DOM element (small pill, CSS `.show`), toggled by
+  `offerHintVisible`.
+- **Initial orientation**: `showRiverMessage(RIVER_INITIAL_HINT)` once at boot.
+- **Conclusion**: on the first `isCrossingEffect(effect)`, schedule
+  `RIVER_CONCLUSION_LINE` once (~5.5s after, so the path line shows first).
 
 ## 10. Tests and minimal commands
-- E5 suite: `npx vitest run tests/river_spirit.test.ts` (12 tests, green).
-- Seam + spawn: `tests/world_content.test.ts`, `tests/river_world_content.test.ts`.
-- Guard: `tests/architecture.test.ts` (scans the sim module for purity).
+- `tests/river_spirit.test.ts` (23, E4+E5+E6): manifestation, resistance/current,
+  the three paths + reconcile, authorized/reconciled suppression, no permanent
+  reward, isolation, determinism.
+- `tests/river_hints.test.ts` (E7): the three pure presentation predicates.
+- `tests/river_world_content.test.ts`, `tests/world_content.test.ts` (seam/spawn),
+  `tests/architecture.test.ts` (sim purity).
 - Focused regression:
-  `npx vitest run tests/river_spirit.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
-- Typecheck `npm run check:ts`; official build `npm run build` (then restore
-  generated artifacts). Parity (`npx vitest run tests/parity --testTimeout=60000`)
-  only if the Sim core / tick order is touched (E5 did not).
+  `npx vitest run tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
+- `npm run check:ts`; `npm run build` (then restore generated artifacts:
+  i18n `resolved.generated`, `guide/content.generated.ts`,
+  `render/assets/manifest.generated.ts`, `i18n.status.summary.json`). Parity only
+  if the Sim core / tick order is touched (E1-E7 never were).
 - Browser: `.claude/launch.json` config `dev` runs `npm --prefix
   world-of-claudecraft run dev` on :5173; open `/river.html`. E2E via
-  `window.__river`. (`.claude/*` is gitignored.)
+  `window.__river` (now includes `spirit`). (`.claude/*` is gitignored.)
 
-## 11. Known limitations
-- Current ignores static collision (straight line) — may pass through a tree for
-  ~2.5s (visual only; RETURN is validated dry).
-- Manifestation/veil are screen-space, not localized at the anchor.
-- No audio (no trivial gesture-free infra in the slice yet).
-- No HUD: only movement + camera + the one-line message. No click-to-move,
-  gamepad, touch, or settings.
-- Terrain/ZONES are the shipped globals; the slice lives inside the vale
-  heightfield and the shipped camps' terrain shaping (not injectable via E2).
-- `releasePlayerSpirit` (death) still targets the shipped zone graveyard, but
-  death is unreachable in the slice (no hostiles).
+## 11. Known limitations after E7
+- The current ignores static collision (straight line) — may pass through a tree
+  for ~2.5s (visual only; RETURN validated dry).
+- Cues/veil/message are screen-space or simple scene stones; no water shader
+  reacting to state (would want an IWorld read; deliberately avoided).
+- No audio. No HUD (movement + camera + message/hint only); no click-to-move,
+  gamepad, touch, or settings. Interact is keyboard `F` only.
+- Terrain/ZONES/props are the shipped globals; the slice lives in the vale
+  heightfield and the shipped world's props still render (e.g. distant huts).
+- Offer requires the token gathered by proximity + the `F` key; a player who
+  never finds the stones/key can still cross via the ford (observe).
+- `releasePlayerSpirit` (death) targets the shipped graveyard, but death is
+  unreachable in the slice (no hostiles).
 
-## 12. Next step: E6 (definition)
-- Add `authorized` and `reconciled` to `RiverRelation`.
-- Implement the three crossing paths:
-  - **Observe**: active perception of the natural ford (read the water / follow
-    cues), not a trigger or a button. Grants passage at the shallow band without
-    the river's blessing (relation stays observed).
-  - **Offer**: a deliberate give at the bank whose acceptance depends on the
-    relational state; on acceptance -> `authorized`, the deep channel calms and
-    the current no longer seizes the body there. Not a colored key (observe also
-    crosses; the river can refuse/reinterpret).
-  - **Force**: keep E5's resistance; a forced attempt entrenches `offended`.
-- Preserve the memory of offense: once `offended`, observe/offer must first
-  reconcile (`offended -> reconciled`); `reconciled` is authorized-with-memory
-  (passage works but the presence stays warier). The first manifestation line
-  never repeats.
-- No combat, no permanent ability/loot reward; the gain is the river's state,
-  never the player's sheet.
+## 12. Invariants and prohibitions (unchanged)
+- No auxiliary agents/subagents; no general repo audit; read only what the step
+  needs; one step per commit.
+- Do NOT change `IWorld`, server, wire protocol, `Sim` core, general renderer,
+  global terrain, classes, or progression without proven need. The presence stays
+  a host-driven, sim-pure module; presentation reflects its state client-side (no
+  IWorld fields for river state; no geometry inside `river_spirit.ts`).
+- No CraftPix assets. Restore build-regenerated artifacts before committing.
 
-## 13. Open questions the E6 agent must actually decide
-- **Authorized suppression + visual**: `authorized` must stop the current in the
-  deep channel; if the calm water should also LOOK calm, the renderer would need
-  to read river state — but IWorld is off-limits. Decide: keep it behavioral +
-  `SimEvent`-driven client-side (recommended, matches E1–E5), or accept a minimal
-  read path.
-- **Ford as real terrain vs scripted passage**: is the "shallow band" a real
-  navigable strip in the existing vale heightfield near the anchor (validate with
-  `terrainHeight`), or a scripted authorized crossing? Pick one geometry; the
-  design proposes one river with a shallow ford + a deep channel.
-- **Offering mechanic without inventory/button**: how does the player "give"
-  with no HUD and no bag? Candidates: dwell/presence at a bank spot, a proximity
-  gesture, or a single takeable natural object (an injected `groundObject` brings
-  loot/quest side effects — verify before using). Decide the smallest honest
-  mechanic.
-- **Observe detection that is not a trigger**: what concrete, testable signal
-  proves the player "read" the ford (e.g., reaching the shallow band on foot,
-  following a cue) without degenerating into "stand in a radius".
-- **Input/UX for interaction**: the slice has no interact key wired
-  (`InputCallbacks.onUiKey('interact')` exists in the full game but the slice
-  passes no-ops). Decide whether offering needs a key or is purely positional.
+## 13. Playtest readiness
+Ready for a first human playtest. The full loop is playable and coherent: arrive,
+be noticed, and negotiate the crossing three distinct spatial ways with
+territorial memory; no combat, no permanent reward. E7 added non-explaining cues
+(initial line, ford/token stones, interaction hint, conclusion) so the system is
+discoverable by observation. The observe path was validated end-to-end in-browser
+organically; offer/force/reconcile are covered by deterministic tests and the
+in-browser smoke.
+
+## 14. Next step: run the human playtest
+- Execute a human playtest of `/river.html` (no code first).
+- Record observations against the questions below.
+- Fix ONLY problems the playtest surfaces (small, targeted); do not add mechanics
+  or start E8 speculatively.
+
+## 15. Questions the playtest must answer
+- Did the player find the ford (the shallow southern neck)?
+- Did they notice the river stones (token) and the ford stones?
+- Did they understand where/how to interact (the offering)?
+- Did they perceive that the river reacted to their conduct?
+- Did they describe the crossing as a relationship, or as a puzzle?
