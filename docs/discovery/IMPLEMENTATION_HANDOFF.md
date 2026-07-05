@@ -15,7 +15,7 @@ combat, no quest, no permanent power.
 
 ## 2. Branch and working tree
 - Branch: `discovery/shamanic-game`.
-- Working tree: clean (E9 committed). `origin`/`upstream` set; no push done.
+- Working tree: clean (E10 committed). `origin`/`upstream` set; no push done.
 - Note: `git core.autocrlf=true` on this Windows checkout; commits store LF (the
   "LF will be replaced by CRLF" warnings are expected and harmless).
 
@@ -30,8 +30,12 @@ combat, no quest, no permanent power.
 - `611cf8d9` feat(shamanic): prepare river slice for playtesting (E7).
 - `7a0b9bf0` feat(shamanic): add localized river presence (E8).
 - `d2e63d89` feat(shamanic): add touch controls to river slice (E9).
+- `bcb447ae` chore(shamanic): harden river slice local playtest (E10: touch safety
+  resets + `dev:lan` script).
+- `fe7bd6a5` chore: align package manager configuration (E10: gitignore stray pnpm
+  artifacts; npm is canonical).
 - Non-slice: `da42ae68` fix(build) CRLF browserslist; `b8d3cb16` docs audit +
-  design; `76c07ba3` docs handoff through E5 (this file, now updated for E9).
+  design; `76c07ba3` docs handoff through E5 (this file, now updated for E10).
 
 ## 4. Current architecture
 - **`river.html`** (repo root, isolated Vite entry, `noindex`): `#game-canvas`,
@@ -224,6 +228,13 @@ general mobile system.
   only on the control areas + the game canvas, `user-select:none`, dim/highlight
   contrast, corners kept clear of the narrative message and the river presence, and
   a portrait tweak (landscape prioritized).
+- **E10 robustness (safety resets)**: `RiverTouchControls.neutralize()` releases
+  both pointers, clears the joystick flags, recenters the knob, and stops the
+  camera drag. It runs on the cases where no `pointerup`/`pointercancel` arrives:
+  window `blur`, document `visibilitychange` -> hidden, and window
+  `orientationchange` (plus the already-handled `pointercancel` and `dispose()`).
+  The window/document wiring is `typeof`-guarded so the module still imports under
+  Node for the unit tests, and `dispose()` detaches it. No redesign, no new gesture.
 
 ## 10. Tests and minimal commands
 - `tests/river_spirit.test.ts` (23, E4+E5+E6): manifestation, resistance/current,
@@ -237,33 +248,37 @@ general mobile system.
   presence-center-over-water invariant, and a scripted manifest -> force -> sweep
   -> ford crossing that pins the E6 `offended -> reconciled` sequence unchanged
   (presentation derived, never a driver) plus the no-unlock-by-arrival guard.
-- `tests/river_touch_controls.test.ts` (E9, 26 tests): the pure helpers
+- `tests/river_touch_controls.test.ts` (E9 + E10, 31 tests): the pure helpers
   (visibility, joystick normalization / dead zone / magnitude clamp, move mapping,
   camera delta + pitch clamp, the keyboard+touch merge with keyboard preserved, and
   `resolveSliceMoveInput` blocking BOTH inputs during the current) plus a
   fake-element (no jsdom) class pass: return-to-zero on release, `pointercancel`,
-  camera delta + stop-on-release, right-half gating, mouse coexistence, and the
-  interact button firing the shared action.
+  camera delta + stop-on-release, right-half gating, mouse coexistence, the interact
+  button firing the shared action, and (E10) the global safety resets (blur / hidden
+  tab / orientationchange neutralize; a visible `visibilitychange` does not; dispose
+  detaches) via stubbed window/document globals.
 - `tests/river_world_content.test.ts`, `tests/world_content.test.ts` (seam/spawn),
   `tests/architecture.test.ts` (sim purity).
-- Focused regression (all green at E9):
+- Focused regression (all green at E10):
   `npx vitest run tests/river_touch_controls.test.ts tests/river_presence_visual.test.ts tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
 - `npm run check:ts`; `npm run build` (then restore generated artifacts:
   i18n `resolved.generated`, `guide/content.generated.ts`,
   `render/assets/manifest.generated.ts`, `i18n.status.summary.json`). Parity only
-  if the Sim core / tick order is touched (E1-E9 never were).
+  if the Sim core / tick order is touched (E1-E10 never were).
 - Browser: `.claude/launch.json` config `dev` runs `npm --prefix
   world-of-claudecraft run dev` on :5173; open `/river.html`. E2E via
   `window.__river` (now includes `spirit`, `presence`, `touch`). (`.claude/*` is
-  gitignored.) For the tablet, start Vite with `--host` and open `/river.html` by
-  the host's LAN IP (see the LAN-access section).
+  gitignored.) For the tablet, run `npm run dev:lan` and open `/river.html` by the
+  host's LAN IP (see the package-manager / LAN section).
 
-## 11. Known limitations after E9
-- E9 touch is deliberately minimal and slice-specific (not the general mobile
-  system): NO pinch zoom (camera distance is fixed on touch; wheel zoom stays on
-  desktop), NO gamepad, and portrait is only TOLERATED (landscape is prioritized;
-  the controls lift clear of the message in portrait but the layout is tuned for
+## 11. Known limitations after E10
+- Touch is deliberately minimal and slice-specific (not the general mobile system):
+  NO pinch zoom (camera distance is fixed on touch; wheel zoom stays on desktop),
+  NO gamepad, no vibration, no forced fullscreen, no PWA install, no forced
+  orientation lock. Portrait is only TOLERATED (landscape is prioritized; the
+  controls lift clear of the message in portrait but the layout is tuned for
   landscape). The controls live in the slice only and never touch the global Input.
+  E10 added the safety resets (blur / hidden tab / orientation) but no new gesture.
 - The E8 presence is a first experimental pass, NOT the art direction: additive
   rings/glow/particles, no true water shader, no reflection/refraction, no
   displacement of the actual water surface. State transitions are eased param
@@ -296,48 +311,53 @@ general mobile system.
   IWorld fields for river state; no geometry inside `river_spirit.ts`).
 - No CraftPix assets. Restore build-regenerated artifacts before committing.
 
-## 13. Playtest readiness (after E9)
-Ready for a real tablet playtest. E9 unblocks touch: the slice is now playable on
-a tablet over the LAN (left joystick for movement, right-half drag for the camera,
-"Interagir" button for the offer), while keyboard + mouse stay intact on desktop.
-Verified: check:ts clean, build green (generated artifacts restored), the focused
-test set green (90 across the river suites, 26 new for touch). Desktop smoke: the
-controls are hidden without `body.river-touch` (CSS `display:none`), and `/`
-returns 200 with the game UI template intact. Touch smoke (emulated browser): the
-joystick produces analog `forward` and drove the player forward through the real
-merge, the same merge moved the player 0 while the current was active (touch
-respects the current), the right-half drag rotated yaw/pitch and stopped on
-release, `pointercancel` left no stuck movement, the "Interagir" button highlighted
-only when valid and its offer resolved to `authorized`, and the console stayed
-clean of slice errors. Note: the headless preview tab stayed hidden, so
-`requestAnimationFrame` was paused; live rAF-loop movement/interact could not be
-observed and were validated via the real touch code plus a manual pump of the real
-merge, backed by the deterministic unit tests. A real tablet is the true test.
+## 13. Playtest readiness (after E10)
+The playable prototype is consolidated. A REAL tablet playtest confirmed E9: the
+slice opens over the LAN, the joystick moves, the drag camera works, the interact
+button works, and `/river.html` is playable in landscape. E10 added only the
+missing touch safety resets (no redesign) and a clean LAN run command, and
+resolved the stray pnpm artifacts (npm is canonical). Verified at E10: check:ts
+clean, `npm run build` green (generated artifacts restored, which also proves the
+existing `node_modules` builds under npm so no reinstall was needed), the focused
+test set green (31 touch tests incl. the E10 safety resets), and a short
+`npm run dev:lan` boot that printed the Network URL and served `/river.html` (200)
+and `/` (200) with no automatic install. The slice is ready for a product-level
+playtest to decide direction (section 14).
 
-## 14. Next step: run a real tablet playtest, then decide (do NOT pre-implement)
-E9's next step is a REAL tablet playtest of `/river.html` over the LAN (section 16):
-confirm the joystick, camera drag, and "Interagir" button feel right on a device,
-and whether the presence reads there. Fix only touch problems the tablet surfaces
-(small, targeted; e.g. joystick size/dead zone, camera sensitivity, button reach).
-Then choose ONE direction as a post-playtest decision, do not start it
-speculatively:
+## 14. Next step: a product decision after the (now confirmed) playtest
+The tablet playtest is done and the prototype is consolidated (E10), so the next
+step is a PRODUCT decision, not more plumbing. Choose ONE direction; do not start
+it speculatively:
 - **Refine the river manifestation**: tune legibility/intensity/animation of the
   E8 presence (still no shader system, still the vertical slice).
 - **Prototype a second kind of presence**: a tree, a stone, or an animal, to test
   whether the "inhabited place" pattern generalizes beyond the river.
-- **Begin structuring the first journey and its characters**: move from a single
-  encounter toward a small authored arc.
+- **Begin structuring the first journey, the mentor, and the starting point**: move
+  from a single encounter toward a small authored arc with its first characters.
 Fix only problems a playtest surfaces (small, targeted); one step per commit.
 
-## 16. Playing on the tablet over the LAN (E9)
-- Start Vite bound to the network: `npm run dev -- --host` (from
-  `world-of-claudecraft/`), or the checked-in `.claude/launch.json` `dev` config.
-  Vite prints a `Network:` URL like `http://192.168.x.y:5173`.
-- On the tablet (same Wi-Fi), open `http://<host-LAN-IP>:5173/river.html`. The
-  touch controls appear automatically (coarse pointer / touch points); no flags.
-- Landscape is best; portrait works. There is no server/login, so no backend is
-  needed (the `/` landing's "project stats" fetch failing offline is expected and
-  unrelated to the slice).
+## 16. Package manager and local run commands (E10)
+- **Canonical package manager: npm.** Evidence: `package-lock.json` is the only
+  tracked lockfile, there is no `packageManager` field, every CI workflow installs
+  with `npm ci`, and the README uses `npm install`. Do NOT use pnpm/yarn here.
+- **Stray pnpm files** (`pnpm-lock.yaml`, `pnpm-workspace.yaml`) from a local pnpm
+  run were removed (untracked, never committed) and are now gitignored. The
+  `pnpm-workspace.yaml` held only pnpm build-approvals (esbuild/sharp/electron
+  -winstaller), a pnpm-only concern npm does not need. `package-lock.json` was left
+  untouched; the existing `node_modules` builds and tests green under npm, so no
+  reinstall was needed. If a clean canonical restore is ever wanted, run `npm ci`.
+- **Install**: `npm ci` (CI / reproducible) or `npm install` (dev).
+- **Local dev**: `npm run dev` (Vite on :5173).
+- **LAN dev (tablet)**: `npm run dev:lan` (= `vite --host`). It serves directly,
+  prints the `Network:` URL, runs no install/build/test, and modifies nothing.
+- **URL**: on the tablet (same Wi-Fi), open `http://<LAN-IP>:<PORT>/river.html`
+  (default port 5173; Vite auto-increments if it is taken, e.g. 5174). The touch
+  controls appear automatically (coarse pointer / touch points); no flags.
+- **Same network**: the computer and the tablet must be on the same LAN/Wi-Fi. On a
+  private network the OS firewall may prompt to allow Node/Vite the first time;
+  allow it. There is no server/login, so no backend is needed (the `/` landing's
+  "project stats" fetch failing offline is expected and unrelated to the slice).
+- **Orientation**: landscape is recommended; portrait is tolerated.
 
 ## 15. Questions the playtest must answer
 - Did the player find the ford (the shallow southern neck)?
