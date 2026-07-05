@@ -13,12 +13,21 @@
 // surface the slice needs), click-to-move, gamepad, touch controls, audio,
 // perf overlay, and every online path. Unifying this with main.ts's bootstrap
 // into a shared module is future work once the slice's real needs are known.
+import * as THREE from 'three';
 import './styles/index.css';
 import { cameraFollowShouldSettle, updateFollowCameraYaw, wrapAngle } from './game/camera_follow';
 import { Input } from './game/input';
 import { Keybinds } from './game/keybinds';
 import { assetsReady } from './render/assets/preload';
 import { Renderer } from './render/renderer';
+import {
+  isCrossingEffect,
+  offerHintVisible,
+  RIVER_CONCLUSION_LINE,
+  RIVER_INITIAL_HINT,
+  RIVER_OFFER_HINT_TEXT,
+  tokenStonesVisible,
+} from './river_hints';
 import { RIVER_INITIAL_WORLD_CONTENT, RIVER_WORLD_SEED } from './sim/content/river/initial_world';
 import {
   attemptOffer,
@@ -26,6 +35,7 @@ import {
   isRiverCurrentActive,
   RIVER_CROSSED_FORD_LINE,
   RIVER_CROSSED_OPEN_LINE,
+  RIVER_FORD_CENTER,
   RIVER_MANIFESTATION_LINE,
   RIVER_OFFER_ACCEPTED_LINE,
   RIVER_OFFER_EMPTY_LINE,
@@ -33,6 +43,7 @@ import {
   RIVER_RECONCILED_LINE,
   RIVER_RESISTANCE_LINE,
   RIVER_TOKEN_LINE,
+  RIVER_TOKEN_SPOT,
   updateRiverSpirit,
 } from './sim/encounters/river_spirit';
 import { Sim } from './sim/sim';
@@ -41,6 +52,53 @@ import { DT, emptyMoveInput } from './sim/types';
 // Mirror Lake's center (src/sim/content/zone1.ts LAKE): the spawn faces the
 // water so the first thing the player sees is the reason the slice exists.
 const LAKE_CENTER = { x: -92, z: 88 };
+
+// E7 legibility cues: small procedural stones placed in the slice renderer's own
+// scene (presentation only; never a Sim entity, never loot). Grey stones mark
+// where the token can be gathered; pale stones mark the shallow ford so the safe
+// crossing reads to the eye. Deterministic layout (fixed offsets, no rng).
+function stone(sim: Sim, x: number, z: number, r: number, color: number, lift: number): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(r),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0 }),
+  );
+  mesh.position.set(x, sim.groundPos(x, z).y + lift, z);
+  mesh.rotation.set(x * 0.7, z * 0.9, x * 0.3); // deterministic tumble
+  return mesh;
+}
+
+interface SliceCues {
+  tokenStones: THREE.Group;
+}
+
+function buildSliceCues(scene: THREE.Scene, sim: Sim): SliceCues {
+  const tokenStones = new THREE.Group();
+  const tokenOffsets: [number, number, number][] = [
+    [0, 0, 0.5],
+    [1.1, 0.6, 0.35],
+    [-0.9, 0.8, 0.4],
+    [0.4, -1.0, 0.3],
+    [-0.6, -0.7, 0.28],
+  ];
+  for (const [dx, dz, r] of tokenOffsets) {
+    tokenStones.add(
+      stone(sim, RIVER_TOKEN_SPOT.x + dx, RIVER_TOKEN_SPOT.z + dz, r, 0x8a8a86, r * 0.6),
+    );
+  }
+  scene.add(tokenStones);
+
+  // Ford stones span the shallow neck (x -96..-102 at z 62), lifted to poke just
+  // above the waterline so the crossing reads as steppable shallows.
+  const fordStones = new THREE.Group();
+  for (let i = 0; i <= 6; i++) {
+    const x = RIVER_FORD_CENTER.x - 3 + i; // -102 .. -96
+    const z = RIVER_FORD_CENTER.z + (i % 2 === 0 ? 0.4 : -0.4);
+    fordStones.add(stone(sim, x, z, 0.34, 0xb8c4c0, 0.55));
+  }
+  scene.add(fordStones);
+
+  return { tokenStones };
+}
 
 function setStatus(text: string): void {
   const status = document.getElementById('river-status');
@@ -146,8 +204,21 @@ async function boot(): Promise<void> {
   document.body.classList.add('game-active');
   hideBootOverlay();
 
+  // E7 playtest cues, in the slice renderer's own scene (presentation only).
+  const cues = buildSliceCues(renderer.scene, sim);
+  const hintEl = document.getElementById('river-hint');
+  if (hintEl) hintEl.textContent = RIVER_OFFER_HINT_TEXT;
+  // One-time spatial-intent line at boot: fades and does not reappear.
+  showRiverMessage(RIVER_INITIAL_HINT);
+  let concluded = false;
+
   // Dev/E2E handle, mirroring main.ts's window.__game for the shipped game.
-  (window as unknown as { __river: object }).__river = { sim, renderer, input };
+  (window as unknown as { __river: object }).__river = {
+    sim,
+    renderer,
+    input,
+    spirit: riverSpirit,
+  };
 
   // Fixed-step offline loop: the trimmed sibling of main.ts's offline arm
   // (no hud/click-move/perf/online). The sim ticks at DT (20 Hz) behind an
@@ -216,8 +287,20 @@ async function boot(): Promise<void> {
         // A wary, cooler breath: the water yields but keeps the memory.
         breatheRiverVeil(2600);
       }
+      // One-time closing beat on reaching the far bank by any valid path,
+      // after the path-specific line has had its moment.
+      if (!concluded && isCrossingEffect(effect)) {
+        concluded = true;
+        window.setTimeout(() => showRiverMessage(RIVER_CONCLUSION_LINE), 5500);
+      }
       acc -= DT;
     }
+
+    // E7 cues reflect the module's truth: the river-stone cue hides once the
+    // token is gathered; the interaction hint shows only at the stone with it.
+    cues.tokenStones.visible = tokenStonesVisible(riverSpirit.hasToken);
+    const showHint = offerHintVisible(riverSpirit.hasToken, sim.player.pos.x, sim.player.pos.z);
+    if (hintEl) hintEl.classList.toggle('show', showHint);
 
     const pp = sim.player;
     const interpFacing = pp.prevFacing + wrapAngle(pp.facing - pp.prevFacing) * (acc / DT);
