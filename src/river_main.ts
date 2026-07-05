@@ -29,6 +29,12 @@ import {
   tokenStonesVisible,
 } from './river_hints';
 import { createRiverPresence, riverPresenceMode } from './river_presence_visual';
+import {
+  NEUTRAL_JOYSTICK_FLAGS,
+  RiverTouchControls,
+  resolveSliceMoveInput,
+  touchControlsShouldShow,
+} from './river_touch_controls';
 import { RIVER_INITIAL_WORLD_CONTENT, RIVER_WORLD_SEED } from './sim/content/river/initial_world';
 import {
   attemptOffer,
@@ -48,7 +54,7 @@ import {
   updateRiverSpirit,
 } from './sim/encounters/river_spirit';
 import { Sim } from './sim/sim';
-import { DT, emptyMoveInput } from './sim/types';
+import { DT } from './sim/types';
 
 // Mirror Lake's center (src/sim/content/zone1.ts LAKE): the spawn faces the
 // water so the first thing the player sees is the reason the slice exists.
@@ -181,9 +187,13 @@ async function boot(): Promise<void> {
     return;
   }
   const noop = (): void => {};
-  // The offer is edge-triggered by the interact key; the loop consumes this each
-  // frame. Local to the slice's own InputCallbacks; the shared Input is untouched.
+  // The offer is edge-triggered; the loop consumes this each frame. Both the
+  // interact key (onUiKey below) and the E9 touch button call this one closure,
+  // so keyboard and touch share the SAME offer path (no second offer logic).
   let pendingInteract = false;
+  const requestInteract = (): void => {
+    pendingInteract = true;
+  };
   const input = new Input(
     canvas,
     {
@@ -192,7 +202,7 @@ async function boot(): Promise<void> {
       onCycleFriendly: noop,
       onAbility: noop,
       onUiKey: (key) => {
-        if (key === 'interact') pendingInteract = true;
+        if (key === 'interact') requestInteract();
       },
       onEmoteWheel: noop,
       onClickPick: noop,
@@ -219,6 +229,32 @@ async function boot(): Promise<void> {
   showRiverMessage(RIVER_INITIAL_HINT);
   let concluded = false;
 
+  // E9 touch controls (slice-only): a left joystick for movement, right-half drag
+  // for the camera, and a contextual "Interagir" button. Shown only on coarse
+  // -pointer / touch devices (never keyed off the user agent), hidden on a
+  // conventional desktop. It never touches the global Input class or the sim; it
+  // feeds the same moveInput (merged with the keyboard) and the same interact.
+  let touch: RiverTouchControls | null = null;
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+  if (touchControlsShouldShow({ coarsePointer, maxTouchPoints: navigator.maxTouchPoints ?? 0 })) {
+    const joystickBase = document.getElementById('river-joystick');
+    const joystickKnob = document.getElementById('river-joystick-knob');
+    const interactButton = document.getElementById('river-interact');
+    if (joystickBase && joystickKnob && interactButton) {
+      document.body.classList.add('river-touch');
+      touch = new RiverTouchControls({
+        cameraSurface: canvas,
+        joystickBase,
+        joystickKnob,
+        interactButton,
+        camera: input,
+        onInteract: requestInteract,
+        isInteractValid: () =>
+          offerHintVisible(riverSpirit.hasToken, sim.player.pos.x, sim.player.pos.z),
+      });
+    }
+  }
+
   // Dev/E2E handle, mirroring main.ts's window.__game for the shipped game.
   (window as unknown as { __river: object }).__river = {
     sim,
@@ -226,6 +262,7 @@ async function boot(): Promise<void> {
     input,
     spirit: riverSpirit,
     presence,
+    touch,
   };
 
   // Fixed-step offline loop: the trimmed sibling of main.ts's offline arm
@@ -263,17 +300,18 @@ async function boot(): Promise<void> {
       // tells us when the water, not the player, owns the body this tick.
       const effect = updateRiverSpirit(riverSpirit, sim);
       const riverOwnsBody = isRiverCurrentActive(riverSpirit) || effect === 'released';
-      if (riverOwnsBody) {
-        // Input blocked: the current owns displacement, so the tick must not
-        // apply player intent (and facing is left to the camera). Local to the
-        // slice; the shared Input/controls are untouched.
-        Object.assign(sim.moveInput, emptyMoveInput());
-      } else {
-        Object.assign(sim.moveInput, input.readMoveInput());
-        // Under mouselook the camera owns the heading (classic right-mouse
-        // turn); otherwise the sim turns the character via turnLeft/Right.
-        if (mouselook) sim.player.facing = input.camYaw;
-      }
+      // Keyboard and the E9 joystick merge into the SAME moveInput; when the
+      // current owns the body the input is blocked entirely (keyboard AND touch
+      // ignored). The shared Input/controls are untouched.
+      const joyFlags = touch ? touch.moveFlags() : NEUTRAL_JOYSTICK_FLAGS;
+      Object.assign(
+        sim.moveInput,
+        resolveSliceMoveInput(riverOwnsBody, input.readMoveInput(), joyFlags),
+      );
+      // Under mouselook the camera owns the heading (classic right-mouse turn);
+      // otherwise the sim turns the character via turnLeft/Right. Never while the
+      // current owns the body.
+      if (!riverOwnsBody && mouselook) sim.player.facing = input.camYaw;
       sim.tick();
       if (effect === 'manifested') {
         showRiverMessage(RIVER_MANIFESTATION_LINE);
@@ -309,6 +347,8 @@ async function boot(): Promise<void> {
     cues.tokenStones.visible = tokenStonesVisible(riverSpirit.hasToken);
     const showHint = offerHintVisible(riverSpirit.hasToken, sim.player.pos.x, sim.player.pos.z);
     if (hintEl) hintEl.classList.toggle('show', showHint);
+    // E9: the touch interact button highlights on the same validity as the hint.
+    touch?.syncInteractHighlight();
 
     // E8 presence reflects the river's truth (relation + active current); it never
     // feeds back into the sim. dormant until manifested; the active current reads
@@ -334,7 +374,10 @@ async function boot(): Promise<void> {
       clickMoving: false,
       // Mouse Camera mode is not wired in the slice yet (no settings menu).
       cameraDriven: false,
-      orbiting: input.leftDown && input.isCameraDragActive(),
+      // A touch camera drag also bypasses auto-follow so it does not fight the
+      // gesture (mirrors the mouse orbit case).
+      orbiting:
+        (input.leftDown && input.isCameraDragActive()) || (touch?.isCameraDragging() ?? false),
     });
     input.camYaw = follow.camYaw;
     lastInterpFacing = follow.lastInterpFacing;

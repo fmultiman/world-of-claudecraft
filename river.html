@@ -55,6 +55,61 @@
     opacity: 0; transition: opacity 0.4s ease-in-out;
   }
   #river-hint.show { opacity: 1; }
+  /* E9 touch controls: slice-only, hidden by default and revealed only when
+     src/river_main.ts adds body.river-touch (coarse pointer / touch device). The
+     container passes touches through (pointer-events: none) so the canvas still
+     receives the camera drag everywhere except over the joystick and button. */
+  #river-touch-controls { position: fixed; inset: 0; z-index: 6; pointer-events: none; display: none; }
+  body.river-touch #river-touch-controls { display: block; }
+  body.river-touch { -webkit-user-select: none; user-select: none; }
+  /* Prevent browser scroll/zoom gestures on the game surface during a camera drag. */
+  body.river-touch #game-canvas { touch-action: none; }
+  #river-joystick {
+    position: absolute;
+    left: calc(env(safe-area-inset-left, 0px) + 4.5vw);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5vh);
+    width: 132px; height: 132px; border-radius: 50%;
+    background: rgba(10, 20, 24, 0.28);
+    border: 1px solid rgba(180, 220, 216, 0.30);
+    pointer-events: auto; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #river-joystick-knob {
+    position: absolute; left: 50%; top: 50%;
+    width: 58px; height: 58px; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(200, 230, 226, 0.55);
+    border: 1px solid rgba(230, 245, 242, 0.7);
+    pointer-events: none;
+  }
+  #river-interact {
+    position: absolute;
+    right: calc(env(safe-area-inset-right, 0px) + 5vw);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 9vh);
+    min-width: 6.2rem; padding: 0.9rem 1.35rem; border-radius: 999px;
+    background: rgba(10, 20, 24, 0.45);
+    border: 1px solid rgba(180, 220, 216, 0.35);
+    color: #e6f2f0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 1.05rem; letter-spacing: 0.04em;
+    pointer-events: auto; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    opacity: 0.42; transition: opacity 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+  }
+  /* Highlighted only when an offer is valid; dim but reachable otherwise, so it
+     never reveals where to interact. */
+  #river-interact.valid {
+    opacity: 1;
+    background: rgba(30, 70, 66, 0.72);
+    box-shadow: 0 0 16px rgba(150, 220, 210, 0.45);
+  }
+  #river-interact:active { transform: scale(0.96); }
+  /* Portrait is tolerated: lift the controls clear of the bottom-center message. */
+  @media (orientation: portrait) {
+    #river-joystick { bottom: calc(env(safe-area-inset-bottom, 0px) + 12vh); }
+    #river-interact { bottom: calc(env(safe-area-inset-bottom, 0px) + 12vh); }
+  }
 </style>
 </head>
 <body>
@@ -63,6 +118,10 @@
 <div id="river-veil"></div>
 <div id="river-message" aria-live="polite"></div>
 <div id="river-hint" aria-live="polite"></div>
+<div id="river-touch-controls">
+  <div id="river-joystick" aria-hidden="true"><div id="river-joystick-knob"></div></div>
+  <button id="river-interact" type="button">Interagir</button>
+</div>
 <div id="river-boot">
   <div>
     <p class="kicker">Jogo Xamanico</p>
