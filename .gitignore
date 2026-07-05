@@ -1,5 +1,10 @@
 # dependencies
 node_modules
+# npm is the canonical package manager here (package-lock.json is tracked and CI
+# uses `npm ci`). Ignore stray pnpm artifacts so a local `pnpm` run is never
+# committed by accident.
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # build outputs
 dist/
