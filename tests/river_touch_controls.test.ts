@@ -5,7 +5,7 @@
 // structural fakes (no jsdom, no browser). Behavioral coverage: return-to-zero on
 // release, pointercancel, camera delta + stop-on-release, right-half gating, and
 // the interact button firing the shared action.
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cameraLookDelta,
   clampCameraPitch,
@@ -301,5 +301,99 @@ describe('RiverTouchControls (fakes)', () => {
     valid = true;
     controls.syncInteractHighlight();
     expect(interactButton.classList.has('valid')).toBe(true);
+  });
+});
+
+// --- E10 global safety resets (blur / hidden tab / orientation) --------------
+// The module wires window/document listeners only when those globals exist; here
+// we stub them so we can fire the captured handlers and assert neutralization.
+
+interface FakeGlobal {
+  handlers: Map<string, ((e: unknown) => void)[]>;
+  visibilityState?: string;
+  addEventListener(type: string, h: (e: unknown) => void): void;
+  removeEventListener(type: string, h: (e: unknown) => void): void;
+}
+
+function fakeGlobal(): FakeGlobal {
+  const handlers = new Map<string, ((e: unknown) => void)[]>();
+  return {
+    handlers,
+    addEventListener(type, h) {
+      const a = handlers.get(type) ?? [];
+      a.push(h);
+      handlers.set(type, a);
+    },
+    removeEventListener(type, h) {
+      handlers.set(
+        type,
+        (handlers.get(type) ?? []).filter((x) => x !== h),
+      );
+    },
+  };
+}
+
+function fireGlobal(g: FakeGlobal, type: string): void {
+  for (const h of g.handlers.get(type) ?? []) h({});
+}
+
+describe('RiverTouchControls global safety resets (E10)', () => {
+  let win: FakeGlobal;
+  let doc: FakeGlobal;
+
+  beforeEach(() => {
+    win = fakeGlobal();
+    doc = fakeGlobal();
+    doc.visibilityState = 'visible';
+    (globalThis as { window?: unknown }).window = win;
+    (globalThis as { document?: unknown }).document = doc;
+  });
+
+  afterEach(() => {
+    (globalThis as { window?: unknown }).window = undefined;
+    (globalThis as { document?: unknown }).document = undefined;
+  });
+
+  it('window.blur releases a held joystick (no stuck movement)', () => {
+    const { controls, joystickBase } = build();
+    fire(joystickBase, 'pointerdown', { pointerId: 61, clientX: 100, clientY: 460 }); // turnLeft
+    expect(controls.moveFlags().turnLeft).toBe(true);
+    fireGlobal(win, 'blur');
+    expect(controls.moveFlags()).toEqual(NEUTRAL_JOYSTICK_FLAGS);
+  });
+
+  it('a hidden tab stops an active camera drag', () => {
+    const { controls, cameraSurface } = build();
+    fire(cameraSurface, 'pointerdown', { pointerId: 62, clientX: 600, clientY: 300 });
+    expect(controls.isCameraDragging()).toBe(true);
+    doc.visibilityState = 'hidden';
+    fireGlobal(doc, 'visibilitychange');
+    expect(controls.isCameraDragging()).toBe(false);
+  });
+
+  it('a visibilitychange back to visible does NOT neutralize', () => {
+    const { controls, joystickBase } = build();
+    fire(joystickBase, 'pointerdown', { pointerId: 63, clientX: 100, clientY: 460 });
+    doc.visibilityState = 'visible';
+    fireGlobal(doc, 'visibilitychange');
+    expect(controls.moveFlags().turnLeft).toBe(true);
+  });
+
+  it('orientationchange releases active pointers', () => {
+    const { controls, joystickBase } = build();
+    fire(joystickBase, 'pointerdown', { pointerId: 64, clientX: 100, clientY: 460 });
+    expect(controls.moveFlags().turnLeft).toBe(true);
+    fireGlobal(win, 'orientationchange');
+    expect(controls.moveFlags()).toEqual(NEUTRAL_JOYSTICK_FLAGS);
+  });
+
+  it('dispose detaches the global safety listeners', () => {
+    const { controls } = build();
+    expect((win.handlers.get('blur') ?? []).length).toBe(1);
+    expect((doc.handlers.get('visibilitychange') ?? []).length).toBe(1);
+    controls.dispose();
+    expect((win.handlers.get('blur') ?? []).length).toBe(0);
+    expect((win.handlers.get('orientationchange') ?? []).length).toBe(0);
+    expect((doc.handlers.get('visibilitychange') ?? []).length).toBe(0);
   });
 });

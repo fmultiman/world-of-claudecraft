@@ -194,6 +194,18 @@ export class RiverTouchControls {
     cameraSurface.addEventListener('pointerup', this.onCamUp);
     cameraSurface.addEventListener('pointercancel', this.onCamUp);
     cameraSurface.addEventListener('lostpointercapture', this.onCamUp);
+
+    // Global safety resets: a lost focus, a hidden tab, or an orientation change can
+    // strand an active pointer with no pointerup/pointercancel, leaving movement or a
+    // camera drag stuck. Neutralize on those. Guarded with typeof so the module still
+    // imports under Node (no window/document) for the unit tests.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('blur', this.onGlobalReset);
+      window.addEventListener('orientationchange', this.onGlobalReset);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibilityChange);
+    }
   }
 
   // Current joystick movement flags (neutral when no pointer is down).
@@ -212,6 +224,31 @@ export class RiverTouchControls {
   // per frame by the slice loop. Presentation only.
   syncInteractHighlight(): void {
     this.o.interactButton.classList.toggle('valid', this.o.isInteractValid());
+  }
+
+  private onGlobalReset = (): void => {
+    this.neutralize();
+  };
+
+  private onVisibilityChange = (): void => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') this.neutralize();
+  };
+
+  // Release both pointers and clear all input state. The safety net for the cases
+  // where no pointerup/pointercancel arrives (lost focus, hidden tab, orientation
+  // change): otherwise a held joystick or camera drag would stay stuck.
+  neutralize(): void {
+    if (this.joyPointerId !== null) {
+      this.release(this.o.joystickBase, this.joyPointerId);
+      this.joyPointerId = null;
+      this.joyVec = { x: 0, y: 0, magnitude: 0 };
+      this.moveKnob(0, 0);
+    }
+    if (this.camPointerId !== null) {
+      this.release(this.o.cameraSurface, this.camPointerId);
+      this.camPointerId = null;
+    }
+    this.cameraDragging = false;
   }
 
   private isTouchLike(e: PointerEvent): boolean {
@@ -325,6 +362,13 @@ export class RiverTouchControls {
     cameraSurface.removeEventListener('pointerup', this.onCamUp);
     cameraSurface.removeEventListener('pointercancel', this.onCamUp);
     cameraSurface.removeEventListener('lostpointercapture', this.onCamUp);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('blur', this.onGlobalReset);
+      window.removeEventListener('orientationchange', this.onGlobalReset);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    }
     this.joyPointerId = null;
     this.camPointerId = null;
     this.cameraDragging = false;
