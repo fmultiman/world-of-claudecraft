@@ -1,4 +1,4 @@
-# Implementation Handoff — "O Rio" vertical slice (through E7)
+# Implementation Handoff: "O Rio" vertical slice (through E8)
 
 Operational handoff so a new agent can continue without re-reading the session.
 Background lives in `SHAMANIC_REPOSITORY_AUDIT.md` and
@@ -15,7 +15,7 @@ combat, no quest, no permanent power.
 
 ## 2. Branch and working tree
 - Branch: `discovery/shamanic-game`.
-- Working tree: clean (E7 committed). `origin`/`upstream` set; no push done.
+- Working tree: clean (E8 committed). `origin`/`upstream` set; no push done.
 - Note: `git core.autocrlf=true` on this Windows checkout; commits store LF (the
   "LF will be replaced by CRLF" warnings are expected and harmless).
 
@@ -28,8 +28,9 @@ combat, no quest, no permanent power.
 - `08308b53` feat(shamanic): add river resistance and current (E5).
 - `b34dca69` feat(shamanic): add three river relationship paths (E6).
 - `611cf8d9` feat(shamanic): prepare river slice for playtesting (E7).
+- `7a0b9bf0` feat(shamanic): add localized river presence (E8).
 - Non-slice: `da42ae68` fix(build) CRLF browserslist; `b8d3cb16` docs audit +
-  design; `76c07ba3` docs handoff through E5 (this file, now updated for E7).
+  design; `76c07ba3` docs handoff through E5 (this file, now updated for E8).
 
 ## 4. Current architecture
 - **`river.html`** (repo root, isolated Vite entry, `noindex`): `#game-canvas`,
@@ -81,6 +82,17 @@ Deep-channel current fires only when relation is `observed` or `offended`;
 `authorized` and `reconciled` permit the deep channel (`deepChannelPermitted`).
 `reconciled` keeps the memory and never becomes `authorized`.
 
+**E8 verification of the `offended -> reconciled` sequence (playtest concern).**
+Re-read and re-tested against E6: after offending and being swept back, a later
+deep-channel passage is permitted ONLY because crossing the ford transitions
+`offended -> reconciled` (river_spirit.ts step 4), and `reconciled` is one of the
+two relations in `deepChannelPermitted`. Reaching the far margin grants NO
+permission by itself: `beyondFarShore` is used purely for crossing-event edge
+detection, never to gate the channel. There is no unlock-by-arrival. The behavior
+is coherent with the E6 design and was left unchanged; a regression test in
+`tests/river_presence_visual.test.ts` pins it (a far-shore arrival while still
+`observed` stays `observed`, a ford crossing, not a reconciliation).
+
 ## 6. The three paths
 - **Observe**: walk the south shore to the shallow ford and wade it (never deep,
   so the current never fires). Relation stays `observed`. Reaching the far bank
@@ -104,7 +116,7 @@ Deep-channel current fires only when relation is `observed` or `offended`;
   12`; `RIVER_OFFERING_STONE = (-67, 73)`, `RIVER_OFFERING_RADIUS = 5`.
 - `RIVER_TOKEN_SPOT = (-52, 66)`, `RIVER_TOKEN_RADIUS = 4` (loose river stones).
 - `RIVER_FORD_CENTER = (-99, 62)`: validated shallow neck (z=62, x ~ -96..-102,
-  no deep cell) — the only wadeable crossing. `RIVER_FAR_SHORE_X = -106`: dry
+  no deep cell), the only wadeable crossing. `RIVER_FAR_SHORE_X = -106`: dry
   ground at/ beyond this x = crossed.
 - `RIVER_RETURN_POS = (-58, 68)` (current deposits here); `RIVER_CURRENT_TICKS =
   50` (2.5s).
@@ -137,15 +149,57 @@ Deep-channel current fires only when relation is `observed` or `offended`;
 - **Conclusion**: on the first `isCrossingEffect(effect)`, schedule
   `RIVER_CONCLUSION_LINE` once (~5.5s after, so the path line shows first).
 
+## 9b. E8 localized river presence (first experimental visual manifestation)
+The playtest concern was that the river reacts in logic and text but the place
+still looks like plain water. E8 adds a small, deliberately incomplete presence
+in the 3D scene. NOT the final art direction, NOT an NPC.
+- **`src/river_presence_visual.ts`** (new, slice layer, may use THREE): holds a
+  DOM/THREE-free, unit-tested state -> mode mapping (`riverPresenceMode(relation,
+  hasManifested, currentActive)`), the per-mode parameter table
+  (`RIVER_PRESENCE_PARAMS`), `presenceVisibleForMode`, `RIVER_PRESENCE_CENTER =
+  (-73, 77)`, and a small `RiverPresence` THREE class (`createRiverPresence`).
+- **Shape**: a `THREE.Group` added to `renderer.scene` with three combined
+  elements kept small: expanding water-surface pulse rings, a soft breathing core
+  glow, and a few rising particles (deterministic layout, no rng). All materials
+  are transparent + additive + `depthWrite:false`.
+- **Placement**: over the water immediately lakeward of `RIVER_SPIRIT_ANCHOR`, at
+  `(-73, 77)` on the `WATER_LEVEL` plane. Validated for seed 20061 as water
+  (groundHeight -5.03 < WATER_LEVEL) and within `RIVER_SPIRIT_RADIUS` of the
+  anchor, so it is in view when the river first notices the player.
+- **Integration** (`src/river_main.ts`): `createRiverPresence(renderer.scene)`
+  once at boot; each animation frame `presence.setMode(riverPresenceMode(...))` +
+  `presence.update(frameDt)`. Exposed on `window.__river.presence` for E2E. The
+  mapping READS the river state only; it never mutates the sim.
+- **Invariants honored**: never a Sim entity, never in the spatial grid, never a
+  collider (cannot block movement or camera), no loot/quest/NPC/ability, no
+  IWorld/Sim/server/protocol/general-renderer/terrain change, no new dependency.
+  The sim-pure `river_spirit.ts` is untouched and stays the source of truth.
+
+### Visual behavior per state (eased transitions, so it appears/calms smoothly)
+- `dormant` (before manifestation): hidden (opacity 0).
+- `observed`: curious, soft, slow breath, gentle cyan.
+- `offended` (and while the current is active, the resistance in motion):
+  turbulent, high amplitude, fast pulse, rings pulled in tight (closed).
+- `authorized`: calmer and brighter, the rings reach wide (open).
+- `reconciled`: contained calm that keeps a trace of tension (quieter than
+  observed, cooler and slightly more restless than authorized).
+
 ## 10. Tests and minimal commands
 - `tests/river_spirit.test.ts` (23, E4+E5+E6): manifestation, resistance/current,
   the three paths + reconcile, authorized/reconciled suppression, no permanent
   reward, isolation, determinism.
 - `tests/river_hints.test.ts` (E7): the three pure presentation predicates.
+- `tests/river_presence_visual.test.ts` (E8, 12 tests): the state -> visual-mode
+  mapping (dormant before manifestation; the active current reads as offended;
+  each settled relation maps to its own face), the per-mode parameter distinctions
+  (dormant hidden; offended vs observed; authorized vs reconciled), the
+  presence-center-over-water invariant, and a scripted manifest -> force -> sweep
+  -> ford crossing that pins the E6 `offended -> reconciled` sequence unchanged
+  (presentation derived, never a driver) plus the no-unlock-by-arrival guard.
 - `tests/river_world_content.test.ts`, `tests/world_content.test.ts` (seam/spawn),
   `tests/architecture.test.ts` (sim purity).
-- Focused regression:
-  `npx vitest run tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
+- Focused regression (all green at E8):
+  `npx vitest run tests/river_presence_visual.test.ts tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
 - `npm run check:ts`; `npm run build` (then restore generated artifacts:
   i18n `resolved.generated`, `guide/content.generated.ts`,
   `render/assets/manifest.generated.ts`, `i18n.status.summary.json`). Parity only
@@ -154,11 +208,21 @@ Deep-channel current fires only when relation is `observed` or `offended`;
   world-of-claudecraft run dev` on :5173; open `/river.html`. E2E via
   `window.__river` (now includes `spirit`). (`.claude/*` is gitignored.)
 
-## 11. Known limitations after E7
-- The current ignores static collision (straight line) — may pass through a tree
+## 11. Known limitations after E8
+- The E8 presence is a first experimental pass, NOT the art direction: additive
+  rings/glow/particles, no true water shader, no reflection/refraction, no
+  displacement of the actual water surface. State transitions are eased param
+  lerps, not authored animation. It is intentionally subtle and reads best when
+  the player is near the anchor facing the lake; from a distance it is faint.
+- The presence sits at a fixed water point (`RIVER_PRESENCE_CENTER`); it does not
+  follow the player, the ford, or the offering stone, and there is a single
+  presence per session. It is decorative feedback, not a spatial guide.
+- No audio accompanies the presence.
+- The current ignores static collision (straight line), may pass through a tree
   for ~2.5s (visual only; RETURN validated dry).
-- Cues/veil/message are screen-space or simple scene stones; no water shader
-  reacting to state (would want an IWorld read; deliberately avoided).
+- Cues/veil/message are screen-space or simple scene stones; the E8 presence is
+  the only state-reactive 3D element and it reads the presence state client-side,
+  not via IWorld (deliberately avoided; no water shader).
 - No audio. No HUD (movement + camera + message/hint only); no click-to-move,
   gamepad, touch, or settings. Interact is keyboard `F` only.
 - Terrain/ZONES/props are the shipped globals; the slice lives in the vale
@@ -177,24 +241,39 @@ Deep-channel current fires only when relation is `observed` or `offended`;
   IWorld fields for river state; no geometry inside `river_spirit.ts`).
 - No CraftPix assets. Restore build-regenerated artifacts before committing.
 
-## 13. Playtest readiness
-Ready for a first human playtest. The full loop is playable and coherent: arrive,
-be noticed, and negotiate the crossing three distinct spatial ways with
-territorial memory; no combat, no permanent reward. E7 added non-explaining cues
-(initial line, ford/token stones, interaction hint, conclusion) so the system is
-discoverable by observation. The observe path was validated end-to-end in-browser
-organically; offer/force/reconcile are covered by deterministic tests and the
-in-browser smoke.
+## 13. Playtest readiness (after E8)
+Ready for a new human playtest. The full loop is playable and coherent (arrive,
+be noticed, negotiate the crossing three distinct spatial ways with territorial
+memory; no combat, no permanent reward), and E8 adds the first in-space signal
+that a presence inhabits the water, so "the river noticed me" no longer depends
+only on the HUD text. Verified: check:ts clean, build green (generated artifacts
+restored), the focused test set green (64 + 14 across the river suites), and a
+single in-browser smoke in `/river.html` confirmed the localized manifestation is
+visible on the water, turns turbulent under resistance, does not block movement or
+camera, leaves the E7 texts/cues working, keeps the console clean of slice errors,
+and leaves `/` (the original game) functional. The observe path was validated
+end-to-end in-browser; offer/force/reconcile are covered by deterministic tests
+and the smoke. Open question for the playtest: is the presence legible enough, or
+too subtle, at the distance/angle the player actually approaches?
 
-## 14. Next step: run the human playtest
-- Execute a human playtest of `/river.html` (no code first).
-- Record observations against the questions below.
-- Fix ONLY problems the playtest surfaces (small, targeted); do not add mechanics
-  or start E8 speculatively.
+## 14. Next step: decide after a new playtest (do NOT pre-implement)
+Run a fresh human playtest of `/river.html` focused on whether the E8 presence is
+perceived (see the questions below, plus "did the water itself feel alive?").
+Then choose ONE direction as a post-playtest decision, do not start it
+speculatively:
+- **Refine the river manifestation**: tune legibility/intensity/animation of the
+  E8 presence (still no shader system, still the vertical slice).
+- **Prototype a second kind of presence**: a tree, a stone, or an animal, to test
+  whether the "inhabited place" pattern generalizes beyond the river.
+- **Begin structuring the first journey and its characters**: move from a single
+  encounter toward a small authored arc.
+Fix only problems a playtest surfaces (small, targeted); one step per commit.
 
 ## 15. Questions the playtest must answer
 - Did the player find the ford (the shallow southern neck)?
 - Did they notice the river stones (token) and the ford stones?
 - Did they understand where/how to interact (the offering)?
 - Did they perceive that the river reacted to their conduct?
+- Did they notice the E8 presence in the water, and did it change with the river's
+  mood (curious vs turbulent vs open vs contained)?
 - Did they describe the crossing as a relationship, or as a puzzle?
