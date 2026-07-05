@@ -28,6 +28,7 @@ import {
   RIVER_OFFER_HINT_TEXT,
   tokenStonesVisible,
 } from './river_hints';
+import { createRiverPresence, riverPresenceMode } from './river_presence_visual';
 import { RIVER_INITIAL_WORLD_CONTENT, RIVER_WORLD_SEED } from './sim/content/river/initial_world';
 import {
   attemptOffer,
@@ -206,6 +207,12 @@ async function boot(): Promise<void> {
 
   // E7 playtest cues, in the slice renderer's own scene (presentation only).
   const cues = buildSliceCues(renderer.scene, sim);
+  // E8 localized river presence: a small, experimental water manifestation over
+  // the water at the anchor. Presentation only (never a Sim entity, never in the
+  // spatial grid, never a collider); it READS the river's relation each frame and
+  // reflects it, and never mutates the sim. Starts dormant (hidden) until the
+  // river manifests.
+  const presence = createRiverPresence(renderer.scene);
   const hintEl = document.getElementById('river-hint');
   if (hintEl) hintEl.textContent = RIVER_OFFER_HINT_TEXT;
   // One-time spatial-intent line at boot: fades and does not reappear.
@@ -218,6 +225,7 @@ async function boot(): Promise<void> {
     renderer,
     input,
     spirit: riverSpirit,
+    presence,
   };
 
   // Fixed-step offline loop: the trimmed sibling of main.ts's offline arm
@@ -301,6 +309,18 @@ async function boot(): Promise<void> {
     cues.tokenStones.visible = tokenStonesVisible(riverSpirit.hasToken);
     const showHint = offerHintVisible(riverSpirit.hasToken, sim.player.pos.x, sim.player.pos.z);
     if (hintEl) hintEl.classList.toggle('show', showHint);
+
+    // E8 presence reflects the river's truth (relation + active current); it never
+    // feeds back into the sim. dormant until manifested; the active current reads
+    // as the offended (turbulent) face.
+    presence.setMode(
+      riverPresenceMode(
+        riverSpirit.relation,
+        riverSpirit.hasManifested,
+        isRiverCurrentActive(riverSpirit),
+      ),
+    );
+    presence.update(frameDt);
 
     const pp = sim.player;
     const interpFacing = pp.prevFacing + wrapAngle(pp.facing - pp.prevFacing) * (acc / DT);
