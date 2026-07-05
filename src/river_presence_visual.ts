@@ -23,11 +23,16 @@ import * as THREE from 'three';
 import type { RiverRelation } from './sim/encounters/river_spirit';
 import { WATER_LEVEL } from './sim/world';
 
-// The presence sits on the water immediately lakeward of the anchor: validated
-// for seed 20061 as water (groundHeight -5.03 < WATER_LEVEL), ~7yd from the
-// anchor so it is inside the manifestation radius and in view when the river
-// first notices the player. Guarded by tests/river_presence_visual.test.ts.
-export const RIVER_PRESENCE_CENTER = Object.freeze({ x: -73, z: 77 });
+// The presence sits over the OPEN body of Mirror Lake (center known at (-92, 88),
+// radius ~30), not on the shore. E11 moved it here from the old shore-shelf point
+// (-73, 77): that spot was barely water (depth ~0.5yd) and the hillside relief hid
+// it from the elevated spawn. This point is validated for seed 20061 as deep open
+// water (groundHeight -8.5, depth ~4yd below WATER_LEVEL) and ~12yd from the lake
+// center, so it reads unobstructed from the spawn hill, the descent, the shore, and
+// the crossing. The detection anchor and the manifestation trigger are UNCHANGED
+// (they stay in river_spirit.ts); only this visual position moved. Guarded by
+// tests/river_presence_visual.test.ts.
+export const RIVER_PRESENCE_CENTER = Object.freeze({ x: -82, z: 82 });
 
 // The five presentation modes. 'dormant' is the pre-manifestation hush (hidden);
 // the other four are the visible relational faces of the presence.
@@ -133,6 +138,9 @@ export function presenceVisibleForMode(mode: RiverPresenceMode): boolean {
 
 const RING_COUNT = 3;
 const PARTICLE_COUNT = 24;
+// E11: a slightly taller plume so the presence reads over the open water from the
+// spawn hill (the position, not the scale, is the real fix; this is a small nudge).
+const PARTICLE_RISE = 2.8;
 
 // Mutable copy of a params set, eased toward the target each frame so mode
 // changes read as the presence settling rather than snapping.
@@ -198,7 +206,9 @@ export class RiverPresence {
     // Core glow: a soft breathing bulge just above the surface, the presence
     // "lifting" toward the arriving player.
     this.core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.6, 2),
+      // E11: slightly larger and lifted a touch higher so the glow reads over the
+      // open water at the greater viewing distance (a small nudge, not a rescale).
+      new THREE.IcosahedronGeometry(0.85, 2),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
@@ -207,7 +217,7 @@ export class RiverPresence {
         blending: THREE.AdditiveBlending,
       }),
     );
-    this.core.position.y = 0.25;
+    this.core.position.y = 0.5;
     this.group.add(this.core);
 
     // Rising particles: a handful of motes drifting up out of the water, laid out
@@ -219,7 +229,7 @@ export class RiverPresence {
       const seed = (i * 0.137) % 1;
       this.particleBase.push({ a, r, seed });
       positions[i * 3] = Math.cos(a) * r;
-      positions[i * 3 + 1] = seed * 2.2;
+      positions[i * 3 + 1] = seed * PARTICLE_RISE;
       positions[i * 3 + 2] = Math.sin(a) * r;
     }
     const pGeo = new THREE.BufferGeometry();
@@ -290,7 +300,7 @@ export class RiverPresence {
     const arr = attr.array as Float32Array;
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const b = this.particleBase[i];
-      const y = ((t * (0.5 + c.pulseSpeed * 0.4) + b.seed) % 1) * 2.2;
+      const y = ((t * (0.5 + c.pulseSpeed * 0.4) + b.seed) % 1) * PARTICLE_RISE;
       const spread = 1 + c.turbulence * 0.6;
       const drift = c.turbulence * 0.2 * Math.sin(t * 5 + i);
       arr[i * 3] = Math.cos(b.a) * b.r * spread + drift;

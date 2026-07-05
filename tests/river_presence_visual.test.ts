@@ -138,16 +138,31 @@ describe('river presence: per-mode parameter distinctions', () => {
   });
 });
 
-describe('river presence: center invariant', () => {
-  it('sits over water immediately lakeward of the anchor (seed 20061)', () => {
+describe('river presence: center invariant (E11: central open water)', () => {
+  // Mirror Lake, known geometry (src/sim/content/zone1.ts LAKE): center + radius.
+  const LAKE_CENTER = { x: -92, z: 88 };
+  const LAKE_RADIUS = 30;
+
+  it('sits over deep OPEN water, off the shore shelf (seed 20061)', () => {
     const h = groundHeight(RIVER_PRESENCE_CENTER.x, RIVER_PRESENCE_CENTER.z, RIVER_WORLD_SEED);
-    expect(h).toBeLessThan(WATER_LEVEL);
-    // Within the manifestation radius so it is in view when the river notices.
-    const d = Math.hypot(
+    // Clearly in the lake body, not the shallow shore shelf that the relief hid
+    // (the old point was ~0.5yd deep; the new one is several yards deep).
+    expect(h).toBeLessThan(WATER_LEVEL - 2);
+  });
+
+  it('sits inside the lake body, central rather than at the anchor', () => {
+    const dLake = Math.hypot(
+      RIVER_PRESENCE_CENTER.x - LAKE_CENTER.x,
+      RIVER_PRESENCE_CENTER.z - LAKE_CENTER.z,
+    );
+    expect(dLake).toBeLessThan(LAKE_RADIUS);
+    // It moved OUT of the detection anchor's radius (12) into the open lake, so it
+    // reads from the spawn hill / descent / shore / crossing, not just up close.
+    const dAnchor = Math.hypot(
       RIVER_PRESENCE_CENTER.x - RIVER_SPIRIT_ANCHOR.x,
       RIVER_PRESENCE_CENTER.z - RIVER_SPIRIT_ANCHOR.z,
     );
-    expect(d).toBeLessThan(12);
+    expect(dAnchor).toBeGreaterThan(12);
   });
 });
 

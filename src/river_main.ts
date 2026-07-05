@@ -28,6 +28,7 @@ import {
   RIVER_OFFER_HINT_TEXT,
   tokenStonesVisible,
 } from './river_hints';
+import { isNeophyteHiddenObject, RIVER_NEOPHYTE_CLASS } from './river_neophyte';
 import { createRiverPresence, riverPresenceMode } from './river_presence_visual';
 import {
   NEUTRAL_JOYSTICK_FLAGS,
@@ -161,10 +162,12 @@ async function boot(): Promise<void> {
 
   const sim = new Sim({
     seed: RIVER_WORLD_SEED,
-    // Temporary TECHNICAL placeholder for the slice, not a design decision:
-    // the Sim requires an existing class, and warrior needs no pet, no form,
-    // and no special setup. The Neofito's real identity is future work.
-    playerClass: 'warrior',
+    // TECHNICAL placeholder for the slice, not a class/design decision (E11): the
+    // Sim needs an existing class, and the priest renders the plain mage.glb robe
+    // (no cape/helmet) so the Neofito reads as an unarmored beginner, not a knight.
+    // Like the previous 'warrior' placeholder it has no pet and no form. The held
+    // weapon is hidden below. The Neofito's real identity is future work.
+    playerClass: RIVER_NEOPHYTE_CLASS,
     playerName: 'Neofito',
     world: RIVER_INITIAL_WORLD_CONTENT,
   });
@@ -271,6 +274,11 @@ async function boot(): Promise<void> {
   let last = performance.now();
   let acc = 0;
   let lastInterpFacing: number | null = null;
+  // E11: the Neofito reads as a plain-robed beginner (no weapon, no hat/cape). The
+  // player visual (and its held weapon / robe meshes) is built on the first
+  // renderer.sync(); once we find and hide them we stop looking. Slice-only; the
+  // global equipment system and character model are untouched.
+  let neophyteDisarmed = false;
   function frame(now: number): void {
     requestAnimationFrame(frame);
     let frameDt = (now - last) / 1000;
@@ -386,6 +394,20 @@ async function boot(): Promise<void> {
     renderer.camPitch = input.camPitch;
     renderer.camDist = input.camDist;
     renderer.sync(acc / DT, frameDt, null);
+
+    // E11: after the visual is built (first sync), neutralize the Neofito in the
+    // slice's own scene: hide the held weapon AND the mage-robe hat/cape so the
+    // figure reads as a plain-robed, bare-headed beginner. The slice world is
+    // MMO-empty (only the player), so this touches nothing else; the traverse stops
+    // once it has hidden at least one such mesh.
+    if (!neophyteDisarmed) {
+      renderer.scene.traverse((o) => {
+        if (isNeophyteHiddenObject(o)) {
+          o.visible = false;
+          neophyteDisarmed = true;
+        }
+      });
+    }
   }
   requestAnimationFrame(frame);
 }
