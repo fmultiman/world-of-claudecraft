@@ -1,12 +1,13 @@
-# Implementation Handoff: "O Rio" vertical slice (through E9)
+# Implementation Handoff: "O Rio" vertical slice (through E11)
 
 Operational handoff so a new agent can continue without re-reading the session.
 Background lives in `SHAMANIC_REPOSITORY_AUDIT.md` and
 `RIVER_VERTICAL_SLICE_DESIGN.md` (this file does not repeat them).
 
 ## 1. Slice in 5 lines
-A Neofito (technical placeholder class: `warrior`) spawns alone on the Eastbrook
-Vale shore of Mirror Lake, offline, no login/server/DB. A territorial presence
+A Neofito (technical placeholder class: `priest`, rendered as a plain unarmed robe;
+E11) spawns alone on the Eastbrook Vale shore of Mirror Lake, offline, no
+login/server/DB. A territorial presence
 (the river) notices him; there are three spatial ways across: read the shallow
 ford, offer at the shore stone, or force the deep channel (which seizes the body
 and sweeps it back). The river keeps a five-state memory of the relationship. The
@@ -15,7 +16,7 @@ combat, no quest, no permanent power.
 
 ## 2. Branch and working tree
 - Branch: `discovery/shamanic-game`.
-- Working tree: clean (E10 committed). `origin`/`upstream` set; no push done.
+- Working tree: clean (E11 committed). `origin`/`upstream` set; no push done.
 - Note: `git core.autocrlf=true` on this Windows checkout; commits store LF (the
   "LF will be replaced by CRLF" warnings are expected and harmless).
 
@@ -34,8 +35,10 @@ combat, no quest, no permanent power.
   resets + `dev:lan` script).
 - `fe7bd6a5` chore: align package manager configuration (E10: gitignore stray pnpm
   artifacts; npm is canonical).
+- `a4ed8cd3` feat(shamanic): improve river presence and neophyte appearance (E11:
+  presence to open lake + robed unarmed Neofito).
 - Non-slice: `da42ae68` fix(build) CRLF browserslist; `b8d3cb16` docs audit +
-  design; `76c07ba3` docs handoff through E5 (this file, now updated for E10).
+  design; `76c07ba3` docs handoff through E5 (this file, now updated for E11).
 
 ## 4. Current architecture
 - **`river.html`** (repo root, isolated Vite entry, `noindex`): `#game-canvas`,
@@ -46,8 +49,9 @@ combat, no quest, no permanent power.
 - **`src/river_main.ts`**: the slice bootstrap. Does NOT reuse `src/main.ts`
   `startGame` (that is ~1700 lines coupled to landing DOM + full HUD, with
   module-scope side effects). Composes public seams directly: `new Sim({ seed,
-  playerClass:'warrior', playerName:'Neofito', world: RIVER_INITIAL_WORLD_CONTENT
-  })`, `Renderer(sim, canvas, nameplates)`, `Input`/`Keybinds`, `camera_follow`,
+  playerClass: RIVER_NEOPHYTE_CLASS ('priest', E11), playerName:'Neofito', world:
+  RIVER_INITIAL_WORLD_CONTENT })`, `Renderer(sim, canvas, nameplates)`,
+  `Input`/`Keybinds`, `camera_follow`,
   `assetsReady`. Fixed-step offline loop (`DT`, 20 Hz, accumulator). No HUD.
   Exposes `window.__river = { sim, renderer, input, spirit, presence, touch }`
   for E2E. Owns
@@ -71,6 +75,12 @@ combat, no quest, no permanent power.
   and conclusion lines, `RIVER_OFFER_HINT_TEXT`, and pure predicates
   `offerHintVisible(hasToken,px,pz)`, `tokenStonesVisible(hasToken)`,
   `isCrossingEffect(effect)`. Reads the module's truth; never holds geometry.
+- **`src/river_neophyte.ts`** (E11, presentation-only, DOM-free, tested): the
+  slice's neutral-appearance decisions: `RIVER_NEOPHYTE_CLASS = 'priest'` (the
+  existing robed, unarmored, no-pet/no-form class the slice spawns) and the pure
+  predicates `isHeldWeaponObject` / `isNeophyteHiddenObject` the entry uses to hide
+  the held weapon and the mage-robe hat/cape in its own scene. Never touches the
+  global equipment system or the character model.
 - **Host-driven flow**: the bootstrap calls `updateRiverSpirit(state, sim)` once
   BEFORE each `sim.tick()`; `attemptOffer` is edge-triggered by the interact key.
   Nothing in `Sim`/`SimContext`/tick order references the module (parity gate
@@ -164,15 +174,18 @@ in the 3D scene. NOT the final art direction, NOT an NPC.
   DOM/THREE-free, unit-tested state -> mode mapping (`riverPresenceMode(relation,
   hasManifested, currentActive)`), the per-mode parameter table
   (`RIVER_PRESENCE_PARAMS`), `presenceVisibleForMode`, `RIVER_PRESENCE_CENTER =
-  (-73, 77)`, and a small `RiverPresence` THREE class (`createRiverPresence`).
+  (-82, 82)` (E11; was (-73, 77)), and a small `RiverPresence` THREE class
+  (`createRiverPresence`).
 - **Shape**: a `THREE.Group` added to `renderer.scene` with three combined
   elements kept small: expanding water-surface pulse rings, a soft breathing core
   glow, and a few rising particles (deterministic layout, no rng). All materials
   are transparent + additive + `depthWrite:false`.
-- **Placement**: over the water immediately lakeward of `RIVER_SPIRIT_ANCHOR`, at
-  `(-73, 77)` on the `WATER_LEVEL` plane. Validated for seed 20061 as water
-  (groundHeight -5.03 < WATER_LEVEL) and within `RIVER_SPIRIT_RADIUS` of the
-  anchor, so it is in view when the river first notices the player.
+- **Placement (E11: open lake)**: over the OPEN body of Mirror Lake at `(-82, 82)`
+  on the `WATER_LEVEL` plane. Validated for seed 20061 as deep water (groundHeight
+  -8.5, ~4yd below WATER_LEVEL) and ~12yd from the lake center, so it reads
+  unobstructed from the spawn hill, the descent, the shore, and the crossing. (The
+  E8 point (-73, 77) was on the shallow shore shelf (~0.5yd deep) and the relief hid
+  it.) The detection anchor and the manifestation trigger are UNCHANGED.
 - **Integration** (`src/river_main.ts`): `createRiverPresence(renderer.scene)`
   once at boot; each animation frame `presence.setMode(riverPresenceMode(...))` +
   `presence.update(frameDt)`. Exposed on `window.__river.presence` for E2E. The
@@ -236,18 +249,41 @@ general mobile system.
   The window/document wiring is `typeof`-guarded so the module still imports under
   Node for the unit tests, and `dispose()` detaches it. No redesign, no new gesture.
 
+## 9d. E11 visual refinements (presence position + neophyte look)
+Two playtest-driven fixes; no mechanic, relational-state, or path change.
+- **Presence to the open lake**: `RIVER_PRESENCE_CENTER` moved (-73, 77) -> (-82, 82)
+  (see 9b). Small readability nudge in `river_presence_visual.ts` (core glow 0.6 ->
+  0.85 and lifted to y 0.5; `PARTICLE_RISE` 2.2 -> 2.8), NOT a rescale; the per-mode
+  `RIVER_PRESENCE_PARAMS` are untouched.
+- **Neutral Neofito (robed, unarmed)**: the slice spawns `RIVER_NEOPHYTE_CLASS`
+  (`'priest'`, an existing class) so the character is the mage.glb robe with no
+  pet/form, instead of the martial knight. Because mage.glb's `Mage_Hat` and
+  `Mage_Cape` are SKINNED meshes that `VisualDef show:[]` cannot strip (and the hat
+  brim hides the whole body), `river_main.ts` hides them AND the held weapon in the
+  slice's OWN scene: after the first `renderer.sync()` it traverses `renderer.scene`
+  once and sets `visible=false` on anything `isNeophyteHiddenObject()` matches
+  (`userData.weaponMesh`, or the `Mage_Hat`/`Mage_Cape` names), then stops. Result: a
+  plain-robed, bare-headed, unarmed figure. The slice world is MMO-empty, so only the
+  player is affected; the global equipment system, the character model, the renderer,
+  and the original game at `/` are untouched. Verified on the real model (preview): the
+  three meshes hidden are exactly `Mage_Hat`, `Mage_Cape`, `staff_A`; body/head/limbs
+  stay visible.
+
 ## 10. Tests and minimal commands
 - `tests/river_spirit.test.ts` (23, E4+E5+E6): manifestation, resistance/current,
   the three paths + reconcile, authorized/reconciled suppression, no permanent
   reward, isolation, determinism.
 - `tests/river_hints.test.ts` (E7): the three pure presentation predicates.
-- `tests/river_presence_visual.test.ts` (E8, 12 tests): the state -> visual-mode
-  mapping (dormant before manifestation; the active current reads as offended;
-  each settled relation maps to its own face), the per-mode parameter distinctions
-  (dormant hidden; offended vs observed; authorized vs reconciled), the
-  presence-center-over-water invariant, and a scripted manifest -> force -> sweep
-  -> ford crossing that pins the E6 `offended -> reconciled` sequence unchanged
-  (presentation derived, never a driver) plus the no-unlock-by-arrival guard.
+- `tests/river_presence_visual.test.ts` (E8, updated E11, 13 tests): the state ->
+  visual-mode mapping (dormant before manifestation; the active current reads as
+  offended; each settled relation maps to its own face), the per-mode parameter
+  distinctions (dormant hidden; offended vs observed; authorized vs reconciled), the
+  E11 center invariant (deep OPEN water, inside the lake, out of the anchor radius),
+  and a scripted manifest -> force -> sweep -> ford crossing that pins the E6
+  `offended -> reconciled` sequence unchanged plus the no-unlock-by-arrival guard.
+- `tests/river_neophyte.test.ts` (E11): `RIVER_NEOPHYTE_CLASS` is an existing, non
+  -warrior class (priest); `isHeldWeaponObject` / `isNeophyteHiddenObject` match the
+  held weapon and the mage-robe hat/cape and keep the body, never mutating.
 - `tests/river_touch_controls.test.ts` (E9 + E10, 31 tests): the pure helpers
   (visibility, joystick normalization / dead zone / magnitude clamp, move mapping,
   camera delta + pitch clamp, the keyboard+touch merge with keyboard preserved, and
@@ -259,19 +295,32 @@ general mobile system.
   detaches) via stubbed window/document globals.
 - `tests/river_world_content.test.ts`, `tests/world_content.test.ts` (seam/spawn),
   `tests/architecture.test.ts` (sim purity).
-- Focused regression (all green at E10):
-  `npx vitest run tests/river_touch_controls.test.ts tests/river_presence_visual.test.ts tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
+- Focused regression (all green at E11):
+  `npx vitest run tests/river_neophyte.test.ts tests/river_touch_controls.test.ts tests/river_presence_visual.test.ts tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
 - `npm run check:ts`; `npm run build` (then restore generated artifacts:
   i18n `resolved.generated`, `guide/content.generated.ts`,
   `render/assets/manifest.generated.ts`, `i18n.status.summary.json`). Parity only
-  if the Sim core / tick order is touched (E1-E10 never were).
+  if the Sim core / tick order is touched (E1-E11 never were). Note: `npm run build`
+  can hit a transient Windows `EPERM` renaming an i18n `.tmp` file when another Vite
+  dev server holds it open (OneDrive/file-watch lock); just retry, it is not a code
+  error.
 - Browser: `.claude/launch.json` config `dev` runs `npm --prefix
   world-of-claudecraft run dev` on :5173; open `/river.html`. E2E via
   `window.__river` (now includes `spirit`, `presence`, `touch`). (`.claude/*` is
   gitignored.) For the tablet, run `npm run dev:lan` and open `/river.html` by the
   host's LAN IP (see the package-manager / LAN section).
 
-## 11. Known limitations after E10
+## 11. Known limitations after E11
+- The Neofito's look is PROVISIONAL, not the definitive skin (E11): it is the
+  existing priest robe with the hat/cape/weapon hidden in the slice by mesh
+  name/tag, a placeholder for "unarmored beginner". No male/female choice, no
+  character creation, no ritual clothing, no new rig/model/animation, no shamanic
+  class system. If the priest model ever changes, the `Mage_Hat`/`Mage_Cape` name
+  hide would need revisiting. The final look is a product/art decision after
+  playtest.
+- The presence position/scale were tuned by validation + a short technical preview,
+  not a full human aesthetic pass; whether it reads well at the real camera is for
+  the human playtest to judge.
 - Touch is deliberately minimal and slice-specific (not the general mobile system):
   NO pinch zoom (camera distance is fixed on touch; wheel zoom stays on desktop),
   NO gamepad, no vibration, no forced fullscreen, no PWA install, no forced
@@ -311,23 +360,23 @@ general mobile system.
   IWorld fields for river state; no geometry inside `river_spirit.ts`).
 - No CraftPix assets. Restore build-regenerated artifacts before committing.
 
-## 13. Playtest readiness (after E10)
-The playable prototype is consolidated. A REAL tablet playtest confirmed E9: the
-slice opens over the LAN, the joystick moves, the drag camera works, the interact
-button works, and `/river.html` is playable in landscape. E10 added only the
-missing touch safety resets (no redesign) and a clean LAN run command, and
-resolved the stray pnpm artifacts (npm is canonical). Verified at E10: check:ts
-clean, `npm run build` green (generated artifacts restored, which also proves the
-existing `node_modules` builds under npm so no reinstall was needed), the focused
-test set green (31 touch tests incl. the E10 safety resets), and a short
-`npm run dev:lan` boot that printed the Network URL and served `/river.html` (200)
-and `/` (200) with no automatic install. The slice is ready for a product-level
-playtest to decide direction (section 14).
+## 13. Playtest readiness (after E11)
+The playable prototype is consolidated and its two worst visual reads are fixed. A
+REAL tablet playtest confirmed E9 (LAN open, joystick, drag camera, interact button,
+landscape). E10 hardened touch + LAN. E11 addressed the two playtest visual notes:
+the presence now sits in the open lake (reads unobstructed) and the Neofito is a
+plain unarmed robe, not a knight. Verified at E11: check:ts clean, `npm run build`
+green (generated artifacts restored), the focused test set green (69 across the
+river suites; 13 presence-visual + the new neophyte suite), and a short technical
+preview confirmed on the real model that the presence is central over the water,
+the Neofito shows no hat/cape/weapon (only `Mage_Hat`/`Mage_Cape`/`staff_A` hidden),
+`/` stays intact, and the console has no new slice errors. The slice is ready for a
+human aesthetic playtest to judge the look and decide direction (section 14).
 
 ## 14. Next step: a product decision after the (now confirmed) playtest
-The tablet playtest is done and the prototype is consolidated (E10), so the next
-step is a PRODUCT decision, not more plumbing. Choose ONE direction; do not start
-it speculatively:
+The tablet playtest is done and the prototype is consolidated with its visuals
+repositioned (E11), so the next step is a PRODUCT decision after a human aesthetic
+playtest, not more plumbing. Choose ONE direction; do not start it speculatively:
 - **Refine the river manifestation**: tune legibility/intensity/animation of the
   E8 presence (still no shader system, still the vertical slice).
 - **Prototype a second kind of presence**: a tree, a stone, or an animal, to test
