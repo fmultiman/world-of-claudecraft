@@ -1,4 +1,4 @@
-# Implementation Handoff: "O Rio" vertical slice (through E8)
+# Implementation Handoff: "O Rio" vertical slice (through E9)
 
 Operational handoff so a new agent can continue without re-reading the session.
 Background lives in `SHAMANIC_REPOSITORY_AUDIT.md` and
@@ -15,7 +15,7 @@ combat, no quest, no permanent power.
 
 ## 2. Branch and working tree
 - Branch: `discovery/shamanic-game`.
-- Working tree: clean (E8 committed). `origin`/`upstream` set; no push done.
+- Working tree: clean (E9 committed). `origin`/`upstream` set; no push done.
 - Note: `git core.autocrlf=true` on this Windows checkout; commits store LF (the
   "LF will be replaced by CRLF" warnings are expected and harmless).
 
@@ -29,21 +29,24 @@ combat, no quest, no permanent power.
 - `b34dca69` feat(shamanic): add three river relationship paths (E6).
 - `611cf8d9` feat(shamanic): prepare river slice for playtesting (E7).
 - `7a0b9bf0` feat(shamanic): add localized river presence (E8).
+- `d2e63d89` feat(shamanic): add touch controls to river slice (E9).
 - Non-slice: `da42ae68` fix(build) CRLF browserslist; `b8d3cb16` docs audit +
-  design; `76c07ba3` docs handoff through E5 (this file, now updated for E8).
+  design; `76c07ba3` docs handoff through E5 (this file, now updated for E9).
 
 ## 4. Current architecture
 - **`river.html`** (repo root, isolated Vite entry, `noindex`): `#game-canvas`,
   `#nameplates`, `#river-veil` (CSS screen tint), `#river-message` (narrative
-  line), `#river-hint` (E7 contextual interaction cue), `#river-boot` (loading
-  overlay), + inline CSS. Loads only `/src/river_main.ts`.
+  line), `#river-hint` (E7 contextual interaction cue), `#river-touch-controls`
+  (E9: `#river-joystick`/`#river-joystick-knob` + the `#river-interact` button),
+  `#river-boot` (loading overlay), + inline CSS. Loads only `/src/river_main.ts`.
 - **`src/river_main.ts`**: the slice bootstrap. Does NOT reuse `src/main.ts`
   `startGame` (that is ~1700 lines coupled to landing DOM + full HUD, with
   module-scope side effects). Composes public seams directly: `new Sim({ seed,
   playerClass:'warrior', playerName:'Neofito', world: RIVER_INITIAL_WORLD_CONTENT
   })`, `Renderer(sim, canvas, nameplates)`, `Input`/`Keybinds`, `camera_follow`,
   `assetsReady`. Fixed-step offline loop (`DT`, 20 Hz, accumulator). No HUD.
-  Exposes `window.__river = { sim, renderer, input, spirit }` for E2E. Owns
+  Exposes `window.__river = { sim, renderer, input, spirit, presence, touch }`
+  for E2E. Owns
   `showRiverMessage()`/`breatheRiverVeil()` and the E7 cue meshes (added to
   `renderer.scene`) + hint/conclusion wiring. Wires `onUiKey('interact')` ->
   `attemptOffer` (default interact key = `F`).
@@ -184,6 +187,44 @@ in the 3D scene. NOT the final art direction, NOT an NPC.
 - `reconciled`: contained calm that keeps a trace of tension (quieter than
   observed, cooler and slightly more restless than authorized).
 
+## 9c. E9 touch controls (slice-only, makes the tablet playable)
+The slice was reachable on the tablet over the LAN but not playable: the bootstrap
+only wired keyboard + mouse. E9 adds the smallest touch set, slice-only, NOT a
+general mobile system.
+- **`src/river_touch_controls.ts`** (new, slice layer): DOM-free pure helpers plus
+  a thin Pointer Events class. Pure (unit-tested): `touchControlsShouldShow`,
+  `normalizeJoystick` (radial dead zone + magnitude clamp), `joystickMoveFlags`,
+  `cameraLookDelta`, `clampCameraPitch` (matches Input's `[-0.4, 1.35]`),
+  `mergeMoveInput`, `resolveSliceMoveInput`, `NEUTRAL_JOYSTICK_FLAGS`. Class
+  `RiverTouchControls`: tracks pointer ids, moves the knob, writes camera
+  yaw/pitch, toggles the interact highlight; pointer capture is try/catch-guarded.
+  It NEVER touches the global `Input` class or the sim.
+- **Movement mapping**: the left joystick (Pointer Events, touch + pen) produces an
+  analog two-axis vector; y -> forward/back, x -> turnLeft/turnRight (matching the
+  slice's keyboard W/S + A/D-turn, so it steers without the camera). The slice loop
+  OR-merges `touch.moveFlags()` with `input.readMoveInput()` via
+  `resolveSliceMoveInput(riverOwnsBody, keyboard, joystick)`; keyboard and touch
+  coexist, and while the current owns the body BOTH are blocked (touch respects the
+  current). Returns to center on release, clears on `pointercancel` (no stuck move).
+- **Camera mapping**: a touch/pen `pointerdown` on the RIGHT half of the canvas
+  captures the pointer; per-move pixel deltas apply `camYaw -= dx*sens`,
+  `camPitch += dy*sens` (clamped) directly to `input.camYaw/camPitch`. A mouse
+  pointer never starts it (desktop coexistence). It never moves the character; the
+  slice loop passes `orbiting: touch.isCameraDragging()` so auto-follow does not
+  fight the drag. Stops immediately on `pointerup`/`pointercancel`. No pinch zoom.
+- **Interaction mapping**: the `#river-interact` ("Interagir") button fires the SAME
+  `requestInteract` closure the interact key uses (one `attemptOffer` path, no
+  second logic). Highlighted (`.valid`) only when `offerHintVisible(...)` is true;
+  dim-but-reachable otherwise so it never reveals where to interact.
+- **Visibility rules**: shown only when `pointer: coarse` OR
+  `navigator.maxTouchPoints > 0` (never the user agent); on a match the bootstrap
+  adds `body.river-touch` and CSS reveals the controls, else they stay
+  `display:none`. On a conventional desktop nothing is wired (`touch` is null).
+- **Layout/safety** (river.html CSS): `env(safe-area-inset-*)`, `touch-action:none`
+  only on the control areas + the game canvas, `user-select:none`, dim/highlight
+  contrast, corners kept clear of the narrative message and the river presence, and
+  a portrait tweak (landscape prioritized).
+
 ## 10. Tests and minimal commands
 - `tests/river_spirit.test.ts` (23, E4+E5+E6): manifestation, resistance/current,
   the three paths + reconcile, authorized/reconciled suppression, no permanent
@@ -196,19 +237,33 @@ in the 3D scene. NOT the final art direction, NOT an NPC.
   presence-center-over-water invariant, and a scripted manifest -> force -> sweep
   -> ford crossing that pins the E6 `offended -> reconciled` sequence unchanged
   (presentation derived, never a driver) plus the no-unlock-by-arrival guard.
+- `tests/river_touch_controls.test.ts` (E9, 26 tests): the pure helpers
+  (visibility, joystick normalization / dead zone / magnitude clamp, move mapping,
+  camera delta + pitch clamp, the keyboard+touch merge with keyboard preserved, and
+  `resolveSliceMoveInput` blocking BOTH inputs during the current) plus a
+  fake-element (no jsdom) class pass: return-to-zero on release, `pointercancel`,
+  camera delta + stop-on-release, right-half gating, mouse coexistence, and the
+  interact button firing the shared action.
 - `tests/river_world_content.test.ts`, `tests/world_content.test.ts` (seam/spawn),
   `tests/architecture.test.ts` (sim purity).
-- Focused regression (all green at E8):
-  `npx vitest run tests/river_presence_visual.test.ts tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
+- Focused regression (all green at E9):
+  `npx vitest run tests/river_touch_controls.test.ts tests/river_presence_visual.test.ts tests/river_spirit.test.ts tests/river_hints.test.ts tests/river_world_content.test.ts tests/world_content.test.ts tests/architecture.test.ts --testTimeout=60000`
 - `npm run check:ts`; `npm run build` (then restore generated artifacts:
   i18n `resolved.generated`, `guide/content.generated.ts`,
   `render/assets/manifest.generated.ts`, `i18n.status.summary.json`). Parity only
-  if the Sim core / tick order is touched (E1-E7 never were).
+  if the Sim core / tick order is touched (E1-E9 never were).
 - Browser: `.claude/launch.json` config `dev` runs `npm --prefix
   world-of-claudecraft run dev` on :5173; open `/river.html`. E2E via
-  `window.__river` (now includes `spirit`). (`.claude/*` is gitignored.)
+  `window.__river` (now includes `spirit`, `presence`, `touch`). (`.claude/*` is
+  gitignored.) For the tablet, start Vite with `--host` and open `/river.html` by
+  the host's LAN IP (see the LAN-access section).
 
-## 11. Known limitations after E8
+## 11. Known limitations after E9
+- E9 touch is deliberately minimal and slice-specific (not the general mobile
+  system): NO pinch zoom (camera distance is fixed on touch; wheel zoom stays on
+  desktop), NO gamepad, and portrait is only TOLERATED (landscape is prioritized;
+  the controls lift clear of the message in portrait but the layout is tuned for
+  landscape). The controls live in the slice only and never touch the global Input.
 - The E8 presence is a first experimental pass, NOT the art direction: additive
   rings/glow/particles, no true water shader, no reflection/refraction, no
   displacement of the actual water surface. State transitions are eased param
@@ -224,7 +279,7 @@ in the 3D scene. NOT the final art direction, NOT an NPC.
   the only state-reactive 3D element and it reads the presence state client-side,
   not via IWorld (deliberately avoided; no water shader).
 - No audio. No HUD (movement + camera + message/hint only); no click-to-move,
-  gamepad, touch, or settings. Interact is keyboard `F` only.
+  gamepad, or settings. Interact is the keyboard `F` key or the E9 touch button.
 - Terrain/ZONES/props are the shipped globals; the slice lives in the vale
   heightfield and the shipped world's props still render (e.g. distant huts).
 - Offer requires the token gathered by proximity + the `F` key; a player who
@@ -241,24 +296,29 @@ in the 3D scene. NOT the final art direction, NOT an NPC.
   IWorld fields for river state; no geometry inside `river_spirit.ts`).
 - No CraftPix assets. Restore build-regenerated artifacts before committing.
 
-## 13. Playtest readiness (after E8)
-Ready for a new human playtest. The full loop is playable and coherent (arrive,
-be noticed, negotiate the crossing three distinct spatial ways with territorial
-memory; no combat, no permanent reward), and E8 adds the first in-space signal
-that a presence inhabits the water, so "the river noticed me" no longer depends
-only on the HUD text. Verified: check:ts clean, build green (generated artifacts
-restored), the focused test set green (64 + 14 across the river suites), and a
-single in-browser smoke in `/river.html` confirmed the localized manifestation is
-visible on the water, turns turbulent under resistance, does not block movement or
-camera, leaves the E7 texts/cues working, keeps the console clean of slice errors,
-and leaves `/` (the original game) functional. The observe path was validated
-end-to-end in-browser; offer/force/reconcile are covered by deterministic tests
-and the smoke. Open question for the playtest: is the presence legible enough, or
-too subtle, at the distance/angle the player actually approaches?
+## 13. Playtest readiness (after E9)
+Ready for a real tablet playtest. E9 unblocks touch: the slice is now playable on
+a tablet over the LAN (left joystick for movement, right-half drag for the camera,
+"Interagir" button for the offer), while keyboard + mouse stay intact on desktop.
+Verified: check:ts clean, build green (generated artifacts restored), the focused
+test set green (90 across the river suites, 26 new for touch). Desktop smoke: the
+controls are hidden without `body.river-touch` (CSS `display:none`), and `/`
+returns 200 with the game UI template intact. Touch smoke (emulated browser): the
+joystick produces analog `forward` and drove the player forward through the real
+merge, the same merge moved the player 0 while the current was active (touch
+respects the current), the right-half drag rotated yaw/pitch and stopped on
+release, `pointercancel` left no stuck movement, the "Interagir" button highlighted
+only when valid and its offer resolved to `authorized`, and the console stayed
+clean of slice errors. Note: the headless preview tab stayed hidden, so
+`requestAnimationFrame` was paused; live rAF-loop movement/interact could not be
+observed and were validated via the real touch code plus a manual pump of the real
+merge, backed by the deterministic unit tests. A real tablet is the true test.
 
-## 14. Next step: decide after a new playtest (do NOT pre-implement)
-Run a fresh human playtest of `/river.html` focused on whether the E8 presence is
-perceived (see the questions below, plus "did the water itself feel alive?").
+## 14. Next step: run a real tablet playtest, then decide (do NOT pre-implement)
+E9's next step is a REAL tablet playtest of `/river.html` over the LAN (section 16):
+confirm the joystick, camera drag, and "Interagir" button feel right on a device,
+and whether the presence reads there. Fix only touch problems the tablet surfaces
+(small, targeted; e.g. joystick size/dead zone, camera sensitivity, button reach).
 Then choose ONE direction as a post-playtest decision, do not start it
 speculatively:
 - **Refine the river manifestation**: tune legibility/intensity/animation of the
@@ -268,6 +328,16 @@ speculatively:
 - **Begin structuring the first journey and its characters**: move from a single
   encounter toward a small authored arc.
 Fix only problems a playtest surfaces (small, targeted); one step per commit.
+
+## 16. Playing on the tablet over the LAN (E9)
+- Start Vite bound to the network: `npm run dev -- --host` (from
+  `world-of-claudecraft/`), or the checked-in `.claude/launch.json` `dev` config.
+  Vite prints a `Network:` URL like `http://192.168.x.y:5173`.
+- On the tablet (same Wi-Fi), open `http://<host-LAN-IP>:5173/river.html`. The
+  touch controls appear automatically (coarse pointer / touch points); no flags.
+- Landscape is best; portrait works. There is no server/login, so no backend is
+  needed (the `/` landing's "project stats" fetch failing offline is expected and
+  unrelated to the slice).
 
 ## 15. Questions the playtest must answer
 - Did the player find the ford (the shallow southern neck)?
