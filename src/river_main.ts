@@ -21,10 +21,18 @@ import { assetsReady } from './render/assets/preload';
 import { Renderer } from './render/renderer';
 import { RIVER_INITIAL_WORLD_CONTENT, RIVER_WORLD_SEED } from './sim/content/river/initial_world';
 import {
+  attemptOffer,
   createRiverSpiritState,
   isRiverCurrentActive,
+  RIVER_CROSSED_FORD_LINE,
+  RIVER_CROSSED_OPEN_LINE,
   RIVER_MANIFESTATION_LINE,
+  RIVER_OFFER_ACCEPTED_LINE,
+  RIVER_OFFER_EMPTY_LINE,
+  RIVER_OFFER_REJECTED_LINE,
+  RIVER_RECONCILED_LINE,
   RIVER_RESISTANCE_LINE,
+  RIVER_TOKEN_LINE,
   updateRiverSpirit,
 } from './sim/encounters/river_spirit';
 import { Sim } from './sim/sim';
@@ -114,6 +122,9 @@ async function boot(): Promise<void> {
     return;
   }
   const noop = (): void => {};
+  // The offer is edge-triggered by the interact key; the loop consumes this each
+  // frame. Local to the slice's own InputCallbacks; the shared Input is untouched.
+  let pendingInteract = false;
   const input = new Input(
     canvas,
     {
@@ -121,7 +132,9 @@ async function boot(): Promise<void> {
       onTargetFriendly: noop,
       onCycleFriendly: noop,
       onAbility: noop,
-      onUiKey: noop,
+      onUiKey: (key) => {
+        if (key === 'interact') pendingInteract = true;
+      },
       onEmoteWheel: noop,
       onClickPick: noop,
     },
@@ -148,6 +161,21 @@ async function boot(): Promise<void> {
     last = now;
     if (frameDt > 0.25) frameDt = 0.25;
 
+    // Offer at the shore stone (interact key), edge-triggered, not tick-aligned.
+    if (pendingInteract) {
+      pendingInteract = false;
+      const outcome = attemptOffer(riverSpirit, sim);
+      if (outcome === 'accepted') {
+        showRiverMessage(RIVER_OFFER_ACCEPTED_LINE);
+        breatheRiverVeil();
+      } else if (outcome === 'rejected') {
+        showRiverMessage(RIVER_OFFER_REJECTED_LINE);
+        breatheRiverVeil(2600);
+      } else if (outcome === 'empty') {
+        showRiverMessage(RIVER_OFFER_EMPTY_LINE);
+      }
+    }
+
     const mouselook = input.isMouselookActive() && !sim.player.dead;
     acc += frameDt;
     while (acc >= DT) {
@@ -171,10 +199,22 @@ async function boot(): Promise<void> {
       if (effect === 'manifested') {
         showRiverMessage(RIVER_MANIFESTATION_LINE);
         breatheRiverVeil();
+      } else if (effect === 'tokenGathered') {
+        showRiverMessage(RIVER_TOKEN_LINE);
       } else if (effect === 'resistStarted') {
         showRiverMessage(RIVER_RESISTANCE_LINE);
         // A stronger, longer breath for the water taking the body.
         breatheRiverVeil(2900);
+      } else if (effect === 'crossedFord') {
+        showRiverMessage(RIVER_CROSSED_FORD_LINE);
+        breatheRiverVeil();
+      } else if (effect === 'crossedOpen') {
+        showRiverMessage(RIVER_CROSSED_OPEN_LINE);
+        breatheRiverVeil();
+      } else if (effect === 'reconciled') {
+        showRiverMessage(RIVER_RECONCILED_LINE);
+        // A wary, cooler breath: the water yields but keeps the memory.
+        breatheRiverVeil(2600);
       }
       acc -= DT;
     }

@@ -11,14 +11,20 @@ import {
   RIVER_WORLD_SEED,
 } from '../src/sim/content/river/initial_world';
 import {
+  attemptOffer,
   createRiverSpiritState,
   isRiverCurrentActive,
+  RIVER_CROSSED_FORD_LINE,
   RIVER_CURRENT_TICKS,
+  RIVER_FAR_SHORE_X,
   RIVER_MANIFESTATION_LINE,
+  RIVER_OFFERING_STONE,
+  RIVER_RECONCILED_LINE,
   RIVER_RESISTANCE_LINE,
   RIVER_RETURN_POS,
   RIVER_SPIRIT_ANCHOR,
   RIVER_SPIRIT_RADIUS,
+  RIVER_TOKEN_SPOT,
   type RiverSpiritEffect,
   type RiverSpiritState,
   updateRiverSpirit,
@@ -73,6 +79,34 @@ const isManifestationLog = (e: SimEvent): boolean =>
   e.type === 'log' && e.text === RIVER_MANIFESTATION_LINE;
 const isResistanceLog = (e: SimEvent): boolean =>
   e.type === 'log' && e.text === RIVER_RESISTANCE_LINE;
+
+// A validated dry -> shallow -> far-shore line across the southern ford (seed
+// 20061): never deep, so the current never fires. Teleport-and-step each point
+// (the far-shore edge fires at RIVER_FAR_SHORE_X). Returns the effects seen.
+function crossFord(sim: Sim, state: RiverSpiritState): RiverSpiritEffect[] {
+  const line: [number, number][] = [
+    [-95, 62],
+    [-99, 62],
+    [-103, 62],
+    [RIVER_FAR_SHORE_X, 62],
+  ];
+  const effects: RiverSpiritEffect[] = [];
+  for (const [x, z] of line) {
+    teleport(sim, x, z);
+    effects.push(step(state, sim).effect);
+  }
+  return effects;
+}
+
+// An observed player who has gathered the token, standing at the offering stone.
+function observedAtStoneWithToken(sim: Sim): RiverSpiritState {
+  const state = createRiverSpiritState();
+  state.relation = 'observed';
+  state.hasManifested = true;
+  state.hasToken = true;
+  teleport(sim, RIVER_OFFERING_STONE.x, RIVER_OFFERING_STONE.z);
+  return state;
+}
 
 // Drive the current to completion from a deep-water start with the given
 // relation, recording per-tick displacement. Optionally feed player input every
@@ -350,8 +384,170 @@ describe('river spirit: isolation and determinism', () => {
     const b = run();
     expect(a.releaseTick).not.toBeNull();
     expect(a).toEqual(b);
-    // Two lines total (manifestation + resistance), never more.
-    expect(a.logTicks).toHaveLength(2);
+    // Three lines on this straight walk: manifestation, the token gathered en
+    // route (the path grazes the token spot), then resistance. Never more.
+    expect(a.logTicks).toHaveLength(3);
+  });
+});
+
+describe('river spirit: the three paths (E6)', () => {
+  it('observe: the ford is crossable while observed, and stays observed', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'observed';
+    state.hasManifested = true;
+    const effects = crossFord(sim, state);
+    // No current ever fires wading the shallow neck.
+    expect(effects).not.toContain('resistStarted');
+    expect(isRiverCurrentActive(state)).toBe(false);
+    // Reaching the far bank reads as the ford; the relation is NOT upgraded.
+    expect(effects.at(-1)).toBe('crossedFord');
+    expect(state.relation).toBe('observed');
+  });
+
+  it('force: the deep channel still resists while observed', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'observed';
+    state.hasManifested = true;
+    teleport(sim, DEEP_POINT.x, DEEP_POINT.z);
+    const { effect, events } = step(state, sim);
+    expect(effect).toBe('resistStarted');
+    expect(events.some(isResistanceLog)).toBe(true);
+    expect(state.relation).toBe('offended');
+  });
+
+  it('offer: a valid offer at the stone with the token authorizes', () => {
+    const sim = makeRiverSim();
+    const state = observedAtStoneWithToken(sim);
+    expect(attemptOffer(state, sim)).toBe('accepted');
+    expect(state.relation).toBe('authorized');
+    expect(state.hasToken).toBe(false); // given, not kept
+  });
+
+  it('authorized: the deep channel no longer seizes the body', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'authorized';
+    state.hasManifested = true;
+    teleport(sim, DEEP_POINT.x, DEEP_POINT.z);
+    const start = { x: sim.player.pos.x, z: sim.player.pos.z };
+    for (let i = 0; i < 40; i++) {
+      const { effect } = step(state, sim, { forward: true });
+      expect(effect).not.toBe('resistStarted');
+    }
+    expect(isRiverCurrentActive(state)).toBe(false);
+    expect(state.relation).toBe('authorized');
+    // The player swims freely (moved from the entry point), not swept back.
+    const moved = Math.hypot(sim.player.pos.x - start.x, sim.player.pos.z - start.z);
+    expect(moved).toBeGreaterThan(1);
+  });
+
+  it('offer out of place or empty-handed does not authorize', () => {
+    // Wrong place: at the token spot, not the stone.
+    const sim1 = makeRiverSim();
+    const s1 = createRiverSpiritState();
+    s1.relation = 'observed';
+    s1.hasManifested = true;
+    s1.hasToken = true;
+    teleport(sim1, RIVER_TOKEN_SPOT.x, RIVER_TOKEN_SPOT.z);
+    expect(attemptOffer(s1, sim1)).toBe('tooFar');
+    expect(s1.relation).toBe('observed');
+    // Empty-handed: at the stone, no token.
+    const sim2 = makeRiverSim();
+    const s2 = createRiverSpiritState();
+    s2.relation = 'observed';
+    s2.hasManifested = true;
+    teleport(sim2, RIVER_OFFERING_STONE.x, RIVER_OFFERING_STONE.z);
+    expect(attemptOffer(s2, sim2)).toBe('empty');
+    expect(s2.relation).toBe('observed');
+  });
+
+  it('offended: the same simple offer is refused, token kept, relation held', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'offended';
+    state.hasManifested = true;
+    state.hasToken = true;
+    teleport(sim, RIVER_OFFERING_STONE.x, RIVER_OFFERING_STONE.z);
+    expect(attemptOffer(state, sim)).toBe('rejected');
+    expect(state.relation).toBe('offended');
+    expect(state.hasToken).toBe(true);
+  });
+
+  it('reconcile: crossing the ford after offending reconciles (not authorized)', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'offended';
+    state.hasManifested = true;
+    const effects = crossFord(sim, state);
+    expect(effects.at(-1)).toBe('reconciled');
+    expect(state.relation).toBe('reconciled');
+    expect(effects).not.toContain('resistStarted');
+  });
+
+  it('reconciled: crosses the deep channel and never becomes authorized', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'reconciled';
+    state.hasManifested = true;
+    teleport(sim, DEEP_POINT.x, DEEP_POINT.z);
+    for (let i = 0; i < 20; i++) {
+      expect(step(state, sim, { forward: true }).effect).not.toBe('resistStarted');
+    }
+    expect(isRiverCurrentActive(state)).toBe(false);
+    expect(state.relation).toBe('reconciled'); // memory kept, never 'authorized'
+  });
+
+  it('memory: a second forced entry after reconciling no longer resists', () => {
+    const sim = makeRiverSim();
+    const state = createRiverSpiritState();
+    state.relation = 'reconciled';
+    state.hasManifested = true;
+    teleport(sim, DEEP_POINT.x, DEEP_POINT.z);
+    expect(step(state, sim).effect).not.toBe('resistStarted');
+    expect(state.relation).toBe('reconciled');
+  });
+
+  it('grants no permanent reward: no xp, gold, items, abilities, or new entities', () => {
+    const sim = makeRiverSim();
+    const before = {
+      xp: sim.xp,
+      copper: sim.copper,
+      inventory: sim.inventory.length,
+      known: sim.known.length,
+      level: sim.player.level,
+      entities: sim.entities.size,
+    };
+    // A full offer-and-cross flow: gather token, offer (authorize), cross.
+    const state = createRiverSpiritState();
+    state.relation = 'observed';
+    state.hasManifested = true;
+    teleport(sim, RIVER_TOKEN_SPOT.x, RIVER_TOKEN_SPOT.z);
+    expect(step(state, sim).effect).toBe('tokenGathered');
+    teleport(sim, RIVER_OFFERING_STONE.x, RIVER_OFFERING_STONE.z);
+    expect(attemptOffer(state, sim)).toBe('accepted');
+    crossFord(sim, state);
+    expect({
+      xp: sim.xp,
+      copper: sim.copper,
+      inventory: sim.inventory.length,
+      known: sim.known.length,
+      level: sim.player.level,
+      entities: sim.entities.size,
+    }).toEqual(before);
+  });
+
+  it('is deterministic: same setup and steps give identical relations and effects', () => {
+    const run = (): { relation: string; effects: RiverSpiritEffect[] } => {
+      const sim = makeRiverSim();
+      const state = createRiverSpiritState();
+      state.relation = 'offended';
+      state.hasManifested = true;
+      const effects = crossFord(sim, state);
+      return { relation: state.relation, effects };
+    };
+    expect(run()).toEqual(run());
   });
 });
 
